@@ -1,2 +1,5 @@
 gunicorn
 flask
+markupsafe
+rdkit
+pillow
