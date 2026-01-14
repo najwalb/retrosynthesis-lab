@@ -21,7 +21,7 @@ HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Retrosynthesis Predictor</title>
+    <title>DiffAlign: Retrosynthesis through Diffusion</title>
     <style>
         * { box-sizing: border-box; }
         body {
@@ -168,8 +168,8 @@ HTML_TEMPLATE = """
 </head>
 <body>
     <div class="container">
-        <h1>🧪 Retrosynthesis Predictor</h1>
-        <p class="subtitle">Enter a target molecule to predict synthetic precursors</p>
+        <h1>DiffAlign: Retrosynthesis through Diffusion</h1>
+        <p class="subtitle">Enter your target molecule below</p>
         
         <form method="post" action="/">
             <div class="form-group">

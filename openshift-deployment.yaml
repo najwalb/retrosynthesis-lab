@@ -1,0 +1,132 @@
+# OpenShift/Rahti deployment configuration for RDKit Flask app
+# Apply with: oc apply -f openshift-deployment.yaml
+
+---
+# ImageStream - stores the built container image
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: rdkit-retro
+  labels:
+    app: rdkit-retro
+
+---
+# BuildConfig - defines how to build the image from Dockerfile
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: rdkit-retro
+  labels:
+    app: rdkit-retro
+spec:
+  source:
+    type: Git
+    git:
+      # Replace with your Git repository URL
+      uri: https://github.com/yourusername/your-repo.git
+      ref: main
+  strategy:
+    type: Docker
+    dockerStrategy:
+      # Use the Dockerfile in the repo root
+      dockerfilePath: Dockerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: rdkit-retro:latest
+  resources:
+    limits:
+      cpu: "1"
+      memory: 2Gi
+    requests:
+      cpu: 200m
+      memory: 512Mi
+  # Uncomment to trigger builds on git push (requires webhook setup)
+  # triggers:
+  #   - type: GitHub
+  #     github:
+  #       secret: your-webhook-secret
+
+---
+# Deployment - runs the application pods
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rdkit-retro
+  labels:
+    app: rdkit-retro
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rdkit-retro
+  template:
+    metadata:
+      labels:
+        app: rdkit-retro
+    spec:
+      containers:
+        - name: rdkit-retro
+          # This references the image from our ImageStream
+          image: rdkit-retro:latest
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          resources:
+            limits:
+              cpu: "1"
+              memory: 1Gi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+          # Health checks
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+
+---
+# Service - internal load balancer for the pods
+apiVersion: v1
+kind: Service
+metadata:
+  name: rdkit-retro
+  labels:
+    app: rdkit-retro
+spec:
+  ports:
+    - name: 8080-tcp
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+  selector:
+    app: rdkit-retro
+  type: ClusterIP
+
+---
+# Route - exposes the service to the internet
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: rdkit-retro
+  labels:
+    app: rdkit-retro
+spec:
+  port:
+    targetPort: 8080-tcp
+  to:
+    kind: Service
+    name: rdkit-retro
+    weight: 100
+  # Uncomment for HTTPS (recommended)
+  # tls:
+  #   termination: edge
+  #   insecureEdgeTerminationPolicy: Redirect
