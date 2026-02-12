@@ -18,14 +18,19 @@ from rdkit.Chem.Draw import rdMolDraw2D
 
 
 # Add the submodule to the path (handles different working directories)
-app_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(app_dir, 'DiffAlign'))
+# app_dir = os.path.dirname(os.path.abspath(__file__))
+# sys.path.insert(0, os.path.join(app_dir, 'DiffAlign'))
+# import sys
+from pathlib import Path
+# sys.path.insert(0, str(Path(__file__).parent))
 
-# sys.path.insert(0, 'model')  # or wherever the submodule lives
-# sys.path.insert(0, 'DiffAlign')  # or wherever the submodule lives
+print("__file__:", __file__)
+print("parent:", Path(__file__).parent)
+print("Resolved path:", Path(__file__).parent.resolve())
+print("Contents:", list(Path(__file__).parent.iterdir()))
+sys.path.insert(0, str(Path(__file__).parent))
 
-#from model.api import predict  # your API functions
-from api import predict  # your API functions
+from DiffAlign.api import predict
 
 # testing
 application = flask.Flask(__name__)
@@ -346,7 +351,7 @@ def index():
             error=f"Invalid SMILES string: '{escape(smiles)}'"
         )
     
-    predictions = predict.mock_predict_precursors(
+    predictions = predict.predict_precursors(
         smiles, 
         n_precursors=n_precursors,
         diffusion_steps=diffusion_steps,
@@ -393,7 +398,7 @@ def api_predict():
     if mol is None:
         return jsonify({'error': f'Invalid SMILES: {smiles}'}), 400
     
-    predictions = predict.mock_predict_precursors(
+    predictions = predict.predict_precursors(
         smiles,
         n_precursors=data.get('n_precursors', 5),
         diffusion_steps=data.get('diffusion_steps', 100),

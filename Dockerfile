@@ -31,6 +31,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY wsgi.py .
+COPY DiffAlign ./DiffAlign
 
 # OpenShift runs as arbitrary UID but in root group (GID 0)
 # Make sure the app directory is writable by root group
