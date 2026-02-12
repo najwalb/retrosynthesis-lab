@@ -21,6 +21,7 @@ sys.path.insert(0, 'DiffAlign')  # or wherever the submodule lives
 from model.api import predict  # your API functions
 #from DiffAlign.api import predict  # your API functions
 
+# testing
 application = flask.Flask(__name__)
 
 # HTML template
