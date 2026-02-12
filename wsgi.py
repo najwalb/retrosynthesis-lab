@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.join(app_dir, 'DiffAlign'))
 # sys.path.insert(0, 'DiffAlign')  # or wherever the submodule lives
 
 #from model.api import predict  # your API functions
-from DiffAlign.api import predict  # your API functions
+from api import predict  # your API functions
 
 # testing
 application = flask.Flask(__name__)
