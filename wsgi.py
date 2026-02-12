@@ -16,8 +16,10 @@ from rdkit.Chem import Descriptors, rdMolDescriptors
 from rdkit.Chem.Draw import rdMolDraw2D
 
 sys.path.insert(0, 'model')  # or wherever the submodule lives
+sys.path.insert(0, 'DiffAlign')  # or wherever the submodule lives
 
-from model.api import predict  # your API functions
+#from model.api import predict  # your API functions
+from DiffAlign.api import predict  # your API functions
 
 application = flask.Flask(__name__)
 
