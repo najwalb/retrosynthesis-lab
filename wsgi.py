@@ -4,6 +4,7 @@ Retrosynthesis prediction web app demo.
 Designed for deployment on CSC Rahti.
 Uses SVG rendering to avoid X11 dependencies.
 """
+import os
 import sys
 import random
 
@@ -15,11 +16,16 @@ from rdkit import Chem
 from rdkit.Chem import Descriptors, rdMolDescriptors
 from rdkit.Chem.Draw import rdMolDraw2D
 
-sys.path.insert(0, 'model')  # or wherever the submodule lives
-sys.path.insert(0, 'DiffAlign')  # or wherever the submodule lives
 
-from model.api import predict  # your API functions
-#from DiffAlign.api import predict  # your API functions
+# Add the submodule to the path (handles different working directories)
+app_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(app_dir, 'DiffAlign'))
+
+# sys.path.insert(0, 'model')  # or wherever the submodule lives
+# sys.path.insert(0, 'DiffAlign')  # or wherever the submodule lives
+
+#from model.api import predict  # your API functions
+from DiffAlign.api import predict  # your API functions
 
 # testing
 application = flask.Flask(__name__)
