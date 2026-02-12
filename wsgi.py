@@ -4,15 +4,20 @@ Retrosynthesis prediction web app demo.
 Designed for deployment on CSC Rahti.
 Uses SVG rendering to avoid X11 dependencies.
 """
+import sys
+import random
 
 import flask
 from flask import request, render_template_string, jsonify
 from markupsafe import escape
-import random
 
 from rdkit import Chem
 from rdkit.Chem import Descriptors, rdMolDescriptors
 from rdkit.Chem.Draw import rdMolDraw2D
+
+sys.path.insert(0, 'model')  # or wherever the submodule lives
+
+from model.api import predict  # your API functions
 
 application = flask.Flask(__name__)
 
@@ -300,30 +305,7 @@ MOCK_PRECURSORS = {
     ],
 }
 
-def mock_predict_precursors(product_smiles, n_precursors=5, diffusion_steps=100, temperature=1.0, beam_size=10):
-    """Mock prediction function - replace with your actual model."""
-    product_mol = Chem.MolFromSmiles(product_smiles)
-    if product_mol is None:
-        return []
-    
-    results = []
-    
-    if product_smiles in MOCK_PRECURSORS:
-        for precursor_set in MOCK_PRECURSORS[product_smiles][:n_precursors]:
-            score = random.uniform(0.7, 0.95)
-            results.append({'precursors': '.'.join(precursor_set), 'score': score})
-    
-    while len(results) < n_precursors:
-        fake_precursors = random.sample([
-            'CCO', 'CC(=O)O', 'c1ccccc1', 'CC(C)C', 'CCN', 'CCCO',
-            'c1ccc(O)cc1', 'CC(=O)Cl', 'CCBr', 'C=CC=C', 'CC#N',
-            'c1ccc(N)cc1', 'OC(=O)C=C', 'CC(=O)OC(=O)C', 'ClCCCl'
-        ], k=random.randint(2, 3))
-        score = random.uniform(0.3, 0.7) * (temperature / 1.0)
-        results.append({'precursors': '.'.join(fake_precursors), 'score': min(score, 0.99)})
-    
-    results.sort(key=lambda x: x['score'], reverse=True)
-    return results[:n_precursors]
+
 
 # ============================================================
 
@@ -355,7 +337,7 @@ def index():
             error=f"Invalid SMILES string: '{escape(smiles)}'"
         )
     
-    predictions = mock_predict_precursors(
+    predictions = predict.mock_predict_precursors(
         smiles, 
         n_precursors=n_precursors,
         diffusion_steps=diffusion_steps,
@@ -402,7 +384,7 @@ def api_predict():
     if mol is None:
         return jsonify({'error': f'Invalid SMILES: {smiles}'}), 400
     
-    predictions = mock_predict_precursors(
+    predictions = predict.mock_predict_precursors(
         smiles,
         n_precursors=data.get('n_precursors', 5),
         diffusion_steps=data.get('diffusion_steps', 100),
