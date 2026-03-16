@@ -203,7 +203,7 @@ HTML_TEMPLATE = """
                 </div>
                 <div class="param-box">
                     <label>Diffusion Steps</label>
-                    <input type="number" name="diffusion_steps" value="{{ diffusion_steps or 100 }}" min="10" max="1000" step="10">
+                    <input type="number" name="diffusion_steps" value="{{ diffusion_steps or 10 }}" min="10" max="1000" step="10">
                 </div>
                 <div class="param-box">
                     <label>Temperature</label>
@@ -307,8 +307,8 @@ def index():
         return render_template_string(HTML_TEMPLATE)
     
     smiles = request.form.get('smiles', '').strip()
-    n_precursors = request.form.get('n_precursors', 5, type=int)
-    diffusion_steps = request.form.get('diffusion_steps', 100, type=int)
+    n_precursors = request.form.get('n_precursors', 2, type=int)
+    diffusion_steps = request.form.get('diffusion_steps', 5, type=int)
     temperature = request.form.get('temperature', 1.0, type=float)
     beam_size = request.form.get('beam_size', 10, type=int)
     
