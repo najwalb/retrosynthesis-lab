@@ -16,18 +16,11 @@ from rdkit.Chem import Descriptors, rdMolDescriptors
 from rdkit.Chem.Draw import rdMolDraw2D
 
 
-# Add the submodule to the path (handles different working directories)
-# app_dir = os.path.dirname(os.path.abspath(__file__))
-# sys.path.insert(0, os.path.join(app_dir, 'DiffAlign'))
-# import sys
+# Add project root and DiffAlign submodule to the path
 from pathlib import Path
-# sys.path.insert(0, str(Path(__file__).parent))
-
-print("__file__:", __file__)
-print("parent:", Path(__file__).parent)
-print("Resolved path:", Path(__file__).parent.resolve())
-print("Contents:", list(Path(__file__).parent.iterdir()))
-sys.path.insert(0, str(Path(__file__).parent))
+app_dir = Path(__file__).parent.resolve()
+sys.path.insert(0, str(app_dir))
+sys.path.insert(0, str(app_dir / 'DiffAlign'))
 
 from DiffAlign.api import predict
 
