@@ -120,6 +120,8 @@ metadata:
   name: rdkit-retro
   labels:
     app: rdkit-retro
+  annotations:
+    haproxy.router.openshift.io/timeout: 600s
 spec:
   port:
     targetPort: 8080-tcp

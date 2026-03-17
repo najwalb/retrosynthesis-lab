@@ -12,7 +12,10 @@
       "Bash(grep -r \"rahti\\\\|RAHTI\\\\|openshift\\\\|k8s\\\\|kubernetes\" /Users/laabidn1/retrosynthesis-lab --include=\"*.md\" --include=\"*.py\" --include=\"*.yml\" --include=\"*.yaml\" 2>/dev/null | head -20)",
       "Bash(oc logs:*)",
       "Bash(grep -r \"timeout\\\\|TIMEOUT\" /Users/laabidn1/retrosynthesis-lab --include=\"*.py\" --include=\"*.yaml\" --include=\"*.sh\" 2>/dev/null | head -20)",
-      "Bash(oc get:*)"
+      "Bash(oc get:*)",
+      "Bash(find /Users/laabidn1/retrosynthesis-lab -type f -name \"Procfile\" -o -name \"Dockerfile*\" -o -name \"docker-compose*\" -o -name \"*.yaml\" -o -name \"*.yml\" 2>/dev/null | head -20)",
+      "Bash(find /Users/laabidn1/retrosynthesis-lab -type f \\\\\\( -name \"gunicorn*\" -o -name \"uwsgi*\" -o -name \"nginx*\" -o -name \"supervisor*\" -o -name \"*.conf\" \\\\\\) 2>/dev/null | head -20)",
+      "Bash(find /Users/laabidn1/retrosynthesis-lab -maxdepth 2 -type f | grep -E \"\\\\.\\(py|yaml|yml|json|sh|conf|cfg|toml|ini|txt|env\\)$\" | sort)"
     ]
   }
 }

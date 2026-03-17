@@ -235,11 +235,11 @@ HTML_TEMPLATE = """
             <div class="params-grid">
                 <div class="param-box">
                     <label>Number of Precursors</label>
-                    <input type="number" name="n_precursors" value="{{ n_precursors or 2 }}" min="1" max="20">
+                    <input type="number" name="n_precursors" value="{{ n_precursors or 1 }}" min="1" max="20">
                 </div>
                 <div class="param-box">
                     <label>Diffusion Steps</label>
-                    <input type="number" name="diffusion_steps" value="{{ diffusion_steps or 5 }}" min="5" max="1000" step="5">
+                    <input type="number" name="diffusion_steps" value="{{ diffusion_steps or 1 }}" min="1" max="1000" step="1">
                 </div>
                 <div class="param-box">
                     <label>Temperature</label>
@@ -351,8 +351,8 @@ def index():
         return render_template_string(HTML_TEMPLATE)
     
     smiles = request.form.get('smiles', '').strip()
-    n_precursors = request.form.get('n_precursors', 2, type=int)
-    diffusion_steps = request.form.get('diffusion_steps', 5, type=int)
+    n_precursors = request.form.get('n_precursors', 1, type=int)
+    diffusion_steps = request.form.get('diffusion_steps', 1, type=int)
     temperature = request.form.get('temperature', 1.0, type=float)
     beam_size = request.form.get('beam_size', 10, type=int)
     
@@ -420,8 +420,8 @@ def api_predict():
     
     predictions = predict.predict_precursors(
         smiles,
-        n_precursors=data.get('n_precursors', 5),
-        diffusion_steps=data.get('diffusion_steps', 100),
+        n_precursors=data.get('n_precursors', 1),
+        diffusion_steps=data.get('diffusion_steps', 1),
         temperature=data.get('temperature', 1.0),
         beam_size=data.get('beam_size', 10)
     )
