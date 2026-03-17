@@ -22,8 +22,7 @@ spec:
   source:
     type: Git
     git:
-      # Replace with your Git repository URL
-      uri: https://github.com/yourusername/your-repo.git
+      uri: https://github.com/najwalb/retrosynthesis-lab.git
       ref: main
   strategy:
     type: Docker
