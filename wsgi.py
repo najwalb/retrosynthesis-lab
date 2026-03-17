@@ -175,9 +175,45 @@ HTML_TEMPLATE = """
             border-radius: 8px;
             border-left: 4px solid #c0392b;
         }
+        /* Loading overlay */
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.45);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .loading-overlay.active { display: flex; }
+        .loading-box {
+            background: white;
+            padding: 40px 50px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+        }
+        .spinner {
+            width: 48px; height: 48px;
+            border: 5px solid #e0e0e0;
+            border-top-color: #4a6fa5;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 18px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-box p { margin: 0; color: #333; font-size: 16px; font-weight: 600; }
+        .loading-box .hint { color: #888; font-size: 13px; margin-top: 8px; font-weight: normal; }
     </style>
 </head>
 <body>
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="loading-box">
+            <div class="spinner"></div>
+            <p>Running retrosynthesis...</p>
+            <p class="hint">This may take a few minutes on cloud CPU</p>
+        </div>
+    </div>
     <div class="container">
         <h1>DiffAlign: Retrosynthesis through Diffusion</h1>
         <p class="subtitle">Enter your target molecule below</p>
@@ -199,11 +235,11 @@ HTML_TEMPLATE = """
             <div class="params-grid">
                 <div class="param-box">
                     <label>Number of Precursors</label>
-                    <input type="number" name="n_precursors" value="{{ n_precursors or 5 }}" min="1" max="20">
+                    <input type="number" name="n_precursors" value="{{ n_precursors or 2 }}" min="1" max="20">
                 </div>
                 <div class="param-box">
                     <label>Diffusion Steps</label>
-                    <input type="number" name="diffusion_steps" value="{{ diffusion_steps or 10 }}" min="10" max="1000" step="10">
+                    <input type="number" name="diffusion_steps" value="{{ diffusion_steps or 5 }}" min="5" max="1000" step="5">
                 </div>
                 <div class="param-box">
                     <label>Temperature</label>
@@ -267,6 +303,9 @@ HTML_TEMPLATE = """
         function clearForm() {
             document.getElementById('smiles-input').value = '';
         }
+        document.querySelector('form').addEventListener('submit', function() {
+            document.getElementById('loading-overlay').classList.add('active');
+        });
     </script>
 </body>
 </html>

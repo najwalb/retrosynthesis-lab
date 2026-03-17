@@ -10,7 +10,9 @@
       "Bash(grep -n \"from.*helpers\\\\|import.*helpers\" /Users/laabidn1/retrosynthesis-lab/DiffAlign/src/neuralnet/*.py 2>/dev/null)",
       "Bash(grep -n \"assert.*device\\\\|assert.*dtype\\\\|assert.*tensor\" /Users/laabidn1/retrosynthesis-lab/DiffAlign/src/diffusion/*.py | head -30)",
       "Bash(grep -r \"rahti\\\\|RAHTI\\\\|openshift\\\\|k8s\\\\|kubernetes\" /Users/laabidn1/retrosynthesis-lab --include=\"*.md\" --include=\"*.py\" --include=\"*.yml\" --include=\"*.yaml\" 2>/dev/null | head -20)",
-      "Bash(oc logs:*)"
+      "Bash(oc logs:*)",
+      "Bash(grep -r \"timeout\\\\|TIMEOUT\" /Users/laabidn1/retrosynthesis-lab --include=\"*.py\" --include=\"*.yaml\" --include=\"*.sh\" 2>/dev/null | head -20)",
+      "Bash(oc get:*)"
     ]
   }
 }
