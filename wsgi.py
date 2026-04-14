@@ -332,7 +332,6 @@ HTML_TEMPLATE = """
 
         /* ── Inpainting styles ── */
         .inpaint-mode .precursor-card { border-color: #e67e22; }
-        .inpaint-mode .mol-svg { cursor: crosshair; }
         .inpaint-toolbar {
             display: none;
             background: #fff8f0;
@@ -388,8 +387,68 @@ HTML_TEMPLATE = """
         }
         .btn-cancel-inpaint:hover { background: #f5f5f5; }
 
-        /* Atom selection highlight */
-        [data-selected="true"] { cursor: pointer; }
+        /* Inpaint focus panel — expanded card in inpaint mode */
+        .inpaint-focus-panel {
+            grid-column: 1 / -1;
+            max-width: 100%;
+        }
+        .inpaint-focus-panel .mol-svg {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            justify-content: center;
+        }
+        .inpaint-focus-panel .rdkit-mol {
+            display: inline-block;
+        }
+
+        /* Hover feedback on atoms in inpaint mode */
+        .inpaint-mode .rdkit-mol svg { cursor: pointer; }
+        /* Hit-area circles: invisible but respond to hover/click */
+        .atom-hit-area {
+            cursor: pointer !important;
+            pointer-events: all !important;
+        }
+        .inpaint-mode .atom-hit-area:hover {
+            fill: rgba(100, 100, 200, 0.2) !important;
+            stroke: rgba(100, 100, 200, 0.5) !important;
+            stroke-width: 1 !important;
+        }
+
+        /* Mode toggle (regenerate/keep) */
+        .mode-toggle {
+            display: flex;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .mode-btn {
+            padding: 6px 14px;
+            font-size: 12px;
+            font-weight: 600;
+            border: none;
+            background: white;
+            color: #555;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+        }
+        .mode-btn:hover { background: #f0f0f0; }
+        .mode-btn.active-regenerate { background: #e74c3c; color: white; }
+        .mode-btn.active-keep { background: #2e86c1; color: white; }
+
+        /* Lasso button */
+        .btn-lasso {
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 600;
+            border: 1px solid #8e44ad;
+            border-radius: 6px;
+            background: white;
+            color: #8e44ad;
+            cursor: pointer;
+        }
+        .btn-lasso:hover { background: #f5eef8; }
+        .btn-lasso.active { background: #8e44ad; color: white; }
 
         /* ── Generation timeline ── */
         .generation-section {
@@ -506,7 +565,7 @@ HTML_TEMPLATE = """
     var generations = [];  // [{results: [...], fixedInfo: null|str, targetSmiles: str}, ...]
     var currentInpaint = null;  // {genIdx, resultIdx, selectedAtoms: Set}
     var currentTargetSmiles = '';
-    var MAX_GENERATIONS = 6;  // 1 initial + 5 inpainting rounds
+    var MAX_GENERATIONS = 4;  // 1 initial + 3 inpainting rounds
 
     /* ── RDKit.js init ── */
     window.initRDKitModule().then(function(RDKit) {
@@ -739,10 +798,25 @@ HTML_TEMPLATE = """
         currentInpaint = {
             genIdx: genIdx,
             resultIdx: resultIdx,
-            selectedAtoms: new Set()
+            selectedAtoms: new Set(),
+            mode: 'regenerate',
+            lassoActive: false,
+            lassoPoints: []
         };
 
         card.classList.add('inpaint-mode');
+        card.classList.add('inpaint-focus-panel');
+
+        // Store original SVG HTML so we can restore on cancel
+        var svgContainer = card.querySelector('.mol-svg');
+        if (svgContainer && !svgContainer.getAttribute('data-orig-html')) {
+            svgContainer.setAttribute('data-orig-html', svgContainer.innerHTML);
+        }
+
+        // Re-render molecules at larger size with atom indices
+        var gen = generations[genIdx];
+        var result = gen.results[resultIdx];
+        renderInpaintMolecules(card, result);
 
         // Add toolbar if not present
         if (!card.querySelector('.inpaint-toolbar')) {
@@ -750,47 +824,122 @@ HTML_TEMPLATE = """
             toolbar.className = 'inpaint-toolbar';
             toolbar.innerHTML =
                 '<div class="toolbar-row">' +
-                    '<span class="inpaint-counter">Click atoms to keep (yellow = fixed). Unselected atoms will be regenerated.</span>' +
+                    '<div class="mode-toggle">' +
+                        '<button class="mode-btn active-regenerate" data-mode="regenerate" onclick="setInpaintMode(\\'regenerate\\', this)">Select atoms to CHANGE</button>' +
+                        '<button class="mode-btn" data-mode="keep" onclick="setInpaintMode(\\'keep\\', this)">Select atoms to KEEP</button>' +
+                    '</div>' +
                 '</div>' +
                 '<div class="toolbar-row">' +
-                    '<span class="inpaint-counter" id="atom-count">0 atoms selected</span>' +
+                    '<span class="inpaint-counter inpaint-instruction">Click atoms you want to regenerate (red = will change). Other atoms stay fixed.</span>' +
                 '</div>' +
-                '<div class="toolbar-row" id="keep-mol-buttons"></div>' +
                 '<div class="toolbar-row">' +
+                    '<span class="inpaint-counter inpaint-atom-count">0 atoms selected</span>' +
+                    '<button class="btn-cancel-inpaint" onclick="selectAllAtoms()" style="font-size:12px;padding:4px 10px;">Select All</button>' +
+                    '<button class="btn-cancel-inpaint" onclick="deselectAllAtoms()" style="font-size:12px;padding:4px 10px;">Deselect All</button>' +
+                '</div>' +
+                '<div class="toolbar-row keep-mol-buttons"></div>' +
+                '<div class="toolbar-row" style="gap:16px;">' +
+                    '<label style="font-size:12px;color:#555;display:flex;align-items:center;gap:4px;">' +
+                        'Precursors <input type="number" class="inpaint-n-precursors" min="1" max="100" value="1" style="width:50px;padding:3px 6px;border:1px solid #ccc;border-radius:4px;font-size:12px;">' +
+                    '</label>' +
+                    '<label style="font-size:12px;color:#555;display:flex;align-items:center;gap:4px;">' +
+                        'Diff. steps <input type="number" class="inpaint-diff-steps" min="1" max="50" value="1" style="width:50px;padding:3px 6px;border:1px solid #ccc;border-radius:4px;font-size:12px;">' +
+                    '</label>' +
+                '</div>' +
+                '<div class="toolbar-row">' +
+                    '<button class="btn-lasso" onclick="toggleLasso(this)">Lasso Select</button>' +
                     '<button class="btn-regenerate" onclick="submitInpaint()" disabled>Regenerate</button>' +
                     '<button class="btn-cancel-inpaint" onclick="cancelInpaint()">Cancel</button>' +
                 '</div>';
             card.appendChild(toolbar);
         } else {
-            card.querySelector('.inpaint-toolbar').style.display = 'block';
+            var existingToolbar = card.querySelector('.inpaint-toolbar');
+            existingToolbar.style.display = 'block';
+            // Reset mode toggle to default (regenerate)
+            existingToolbar.querySelectorAll('.mode-btn').forEach(function(b) {
+                b.className = 'mode-btn';
+                if (b.getAttribute('data-mode') === 'regenerate') b.classList.add('active-regenerate');
+            });
+            var instrEl = existingToolbar.querySelector('.inpaint-instruction');
+            if (instrEl) instrEl.textContent = 'Click atoms you want to regenerate (red = will change). Other atoms stay fixed.';
+            var countEl = existingToolbar.querySelector('.inpaint-atom-count');
+            if (countEl) countEl.textContent = '0 atoms selected to change';
+            var regenBtn = existingToolbar.querySelector('.btn-regenerate');
+            if (regenBtn) regenBtn.disabled = true;
         }
 
-        // Add "Keep entire molecule" buttons for each reactant
-        var gen = generations[genIdx];
-        var result = gen.results[resultIdx];
-        var keepBtnsContainer = card.querySelector('#keep-mol-buttons');
+        // Add molecule shortcut buttons for each reactant
+        var keepBtnsContainer = card.querySelector('.keep-mol-buttons');
         keepBtnsContainer.innerHTML = '';
         if (result && result.atom_mapping) {
             result.atom_mapping.forEach(function(mi, molIdx) {
-                var btn = document.createElement('button');
-                btn.className = 'btn-keep-mol';
-                btn.textContent = 'Keep molecule ' + (molIdx + 1) + ' (' + mi.smiles.substring(0, 20) + (mi.smiles.length > 20 ? '...' : '') + ')';
-                btn.onclick = function() { toggleKeepMolecule(molIdx, btn); };
-                keepBtnsContainer.appendChild(btn);
+                var molBtn = document.createElement('button');
+                molBtn.className = 'btn-keep-mol';
+                molBtn.setAttribute('data-mol-idx', molIdx);
+                molBtn.textContent = getMolButtonLabel(molIdx, mi.smiles);
+                molBtn.onclick = function() { toggleKeepMolecule(molIdx, molBtn); };
+                keepBtnsContainer.appendChild(molBtn);
             });
         }
 
-        // Set up click handlers on SVG atoms
+        // Set up click handlers on SVG atoms (event delegation)
         setupAtomClickHandlers(card);
+    }
+
+    /* Render molecules at enlarged size with atom indices for inpaint mode */
+    function renderInpaintMolecules(card, result) {
+        if (!RDKitModule || !result || !result.atom_mapping) return;
+        var svgContainer = card.querySelector('.mol-svg');
+        var html = '';
+        result.atom_mapping.forEach(function(mi, molIdx) {
+            try {
+                var mol = RDKitModule.get_mol(mi.smiles);
+                if (mol) {
+                    var mdetails = {
+                        addAtomIndices: true,
+                        annotationFontScale: 0.7,
+                        bondLineWidth: 2.0
+                    };
+                    var svg = mol.get_svg_with_highlights(JSON.stringify(mdetails));
+                    mol.delete();
+                    // Resize SVG to 400x260
+                    svg = svg.replace(/width='(\\d+)px'/, "width='400px'").replace(/height='(\\d+)px'/, "height='260px'");
+                    html += '<div class="rdkit-mol" data-mol-index="' + molIdx + '" ' +
+                            "data-atom-map='" + JSON.stringify(mi.atom_map) + "' " +
+                            'data-smiles="' + mi.smiles.replace(/"/g, '&quot;') + '">' +
+                            svg + '</div>';
+                }
+            } catch(e) {
+                console.warn('RDKit render error for', mi.smiles, e);
+            }
+        });
+        if (html) {
+            svgContainer.innerHTML = html;
+            svgContainer.classList.add('rdkit-rendered');
+            // Add invisible hit-area circles for reliable click targeting
+            svgContainer.querySelectorAll('.rdkit-mol').forEach(function(molDiv) {
+                addAtomHitAreas(molDiv);
+            });
+        }
+    }
+
+    /* Get label for molecule shortcut button based on current mode */
+    function getMolButtonLabel(molIdx, smiles) {
+        var mode = (currentInpaint && currentInpaint.mode) || 'regenerate';
+        var prefix = mode === 'regenerate' ? 'Regenerate' : 'Keep';
+        var truncated = smiles.substring(0, 20) + (smiles.length > 20 ? '...' : '');
+        return prefix + ' mol ' + (molIdx + 1) + ' (' + truncated + ')';
     }
 
     function setupAtomClickHandlers(card) {
         var molContainers = card.querySelectorAll('.rdkit-mol');
         molContainers.forEach(function(molDiv) {
-            var svgEl = molDiv.querySelector('svg');
-            if (!svgEl) return;
+            // Use event delegation on the molDiv (not svgEl) so handlers survive SVG re-renders
+            if (molDiv.getAttribute('data-click-bound')) return;
+            molDiv.setAttribute('data-click-bound', 'true');
 
-            svgEl.addEventListener('click', function(event) {
+            molDiv.addEventListener('click', function(event) {
+                if (currentInpaint && currentInpaint.lassoActive) return; // skip in lasso mode
                 var target = event.target;
                 // SVG elements have className as SVGAnimatedString; always use baseVal
                 var className = '';
@@ -801,8 +950,8 @@ HTML_TEMPLATE = """
                 }
                 if (!className) return;
 
-                // Match atom-N class
-                var atomMatch = className.match(/atom-(\\d+)/);
+                // Match atom-N class (exact match with word boundary)
+                var atomMatch = className.match(/\\batom-(\\d+)\\b/);
                 if (!atomMatch) return;
                 var rdkitAtomIdx = atomMatch[1];  // string key for the atom_map
                 var atomMap = JSON.parse(molDiv.getAttribute('data-atom-map') || '{}');
@@ -812,54 +961,166 @@ HTML_TEMPLATE = """
                 // Toggle selection
                 if (currentInpaint.selectedAtoms.has(denseIdx)) {
                     currentInpaint.selectedAtoms.delete(denseIdx);
-                    clearAtomHighlight(svgEl, rdkitAtomIdx);
                 } else {
                     currentInpaint.selectedAtoms.add(denseIdx);
-                    highlightAtom(svgEl, rdkitAtomIdx);
                 }
+
+                // Re-render this molecule with updated highlights
+                var selectedRdkit = [];
+                for (var key in atomMap) {
+                    if (currentInpaint.selectedAtoms.has(atomMap[key])) {
+                        selectedRdkit.push(parseInt(key));
+                    }
+                }
+                reRenderMolWithHighlights(molDiv, selectedRdkit);
                 updateAtomCount();
             });
         });
     }
 
-    function getSvgClassName(el) {
-        if (el.className && typeof el.className === 'string') return el.className;
-        if (el.className && el.className.baseVal != null) return el.className.baseVal;
-        return '';
+    /* Re-render a single molecule SVG with RDKit.js native highlighting */
+    function reRenderMolWithHighlights(molDiv, selectedRdkitAtoms) {
+        var smiles = molDiv.getAttribute('data-smiles');
+        if (!smiles || !RDKitModule) return;
+        var mol = RDKitModule.get_mol(smiles);
+        if (!mol) return;
+
+        var mode = (currentInpaint && currentInpaint.mode) || 'regenerate';
+        var color = mode === 'regenerate' ? [0.91, 0.30, 0.24] : [0.18, 0.62, 0.78];
+
+        var mdetails = {
+            atoms: selectedRdkitAtoms,
+            highlightColour: color,
+            fillHighlights: true,
+            addAtomIndices: true,
+            annotationFontScale: 0.7,
+            highlightBondWidthMultiplier: 8,
+            bondLineWidth: 2.0
+        };
+
+        var svg = mol.get_svg_with_highlights(JSON.stringify(mdetails));
+        mol.delete();
+
+        // Replace the SVG content (event delegation on molDiv survives this)
+        var oldSvg = molDiv.querySelector('svg');
+        if (oldSvg) {
+            oldSvg.outerHTML = svg;
+        } else {
+            molDiv.innerHTML = svg;
+        }
+
+        // Apply inpaint-mode size via viewBox scaling
+        var newSvg = molDiv.querySelector('svg');
+        if (newSvg) {
+            newSvg.setAttribute('width', '400');
+            newSvg.setAttribute('height', '260');
+        }
+
+        // Add invisible hit-area circles for reliable click targeting
+        addAtomHitAreas(molDiv);
     }
 
-    function highlightAtom(svgEl, atomIdx) {
-        var re = new RegExp('(^|\\s)atom-' + atomIdx + '(\\s|$)');
-        svgEl.querySelectorAll('[class*="atom-' + atomIdx + '"]').forEach(function(el) {
-            if (!re.test(getSvgClassName(el))) return;
-            el.setAttribute('data-selected', 'true');
-            el.setAttribute('data-orig-stroke', el.getAttribute('stroke') || '');
-            el.setAttribute('data-orig-stroke-width', el.getAttribute('stroke-width') || '');
-            el.setAttribute('data-orig-fill', el.getAttribute('fill') || '');
-            var tag = el.tagName.toLowerCase();
-            if (tag === 'path' || tag === 'line') {
-                el.setAttribute('stroke', '#e67e22');
-                el.setAttribute('stroke-width', '4');
-            } else if (tag === 'text' || tag === 'tspan') {
-                el.setAttribute('fill', '#e67e22');
-                el.style.fontWeight = 'bold';
-            } else if (tag === 'ellipse' || tag === 'circle' || tag === 'rect') {
-                el.setAttribute('fill', 'rgba(230, 126, 34, 0.3)');
-                el.setAttribute('stroke', '#e67e22');
-                el.setAttribute('stroke-width', '2');
+    /**
+     * Add transparent circle overlays at every atom position.
+     * Solves: hidden carbons have no SVG elements; visible atoms are too small.
+     * Strategy: gather positions from existing atom elements + bond path endpoints,
+     * then append large transparent circles with the atom-N class.
+     */
+    function addAtomHitAreas(molDiv) {
+        var svgEl = molDiv.querySelector('svg');
+        if (!svgEl) return;
+        var atomMap = JSON.parse(molDiv.getAttribute('data-atom-map') || '{}');
+        var atomPositions = {};  // rdkitIdx -> {x, y}
+
+        // Pass 1: find positions from elements that have atom-N classes (visible atoms)
+        for (var rdkitIdx in atomMap) {
+            var re = new RegExp('(^|\\\\s)atom-' + rdkitIdx + '(\\\\s|$)');
+            var els = svgEl.querySelectorAll('[class*="atom-' + rdkitIdx + '"]');
+            var cx = 0, cy = 0, count = 0;
+            els.forEach(function(el) {
+                var cls = (el.className && el.className.baseVal != null) ? el.className.baseVal : (el.className || '');
+                if (!re.test(cls)) return;
+                if (el.classList && el.classList.contains('atom-hit-area')) return; // skip our own overlays
+                try {
+                    var bbox = el.getBBox();
+                    if (bbox.width > 0 || bbox.height > 0) {
+                        cx += bbox.x + bbox.width / 2;
+                        cy += bbox.y + bbox.height / 2;
+                        count++;
+                    }
+                } catch(e) {}
+            });
+            if (count > 0) {
+                atomPositions[rdkitIdx] = {x: cx / count, y: cy / count};
+            }
+        }
+
+        // Pass 2: for atoms without positions, extract from bond path endpoints
+        // Bond paths have class="bond-N atom-A atom-B" and d="M x1,y1 L x2,y2 ..."
+        var bondPaths = svgEl.querySelectorAll('path[class*="bond-"]');
+        bondPaths.forEach(function(path) {
+            var cls = (path.className && path.className.baseVal != null) ? path.className.baseVal : '';
+            var d = path.getAttribute('d') || '';
+            // Extract atom indices from class
+            var atomMatches = cls.match(/atom-(\\d+)/g);
+            if (!atomMatches || atomMatches.length < 2) return;
+            var idx0 = atomMatches[0].replace('atom-', '');
+            var idx1 = atomMatches[1].replace('atom-', '');
+            // Parse first and last coordinates from d attribute
+            var coords = extractPathEndpoints(d);
+            if (!coords) return;
+            // First coord → first atom, last coord → second atom
+            if (!atomPositions[idx0] && atomMap[idx0] !== undefined) {
+                atomPositions[idx0] = coords.start;
+            }
+            if (!atomPositions[idx1] && atomMap[idx1] !== undefined) {
+                atomPositions[idx1] = coords.end;
             }
         });
+
+        // Pass 3: create transparent circles at each atom position
+        for (var idx in atomPositions) {
+            if (atomMap[idx] === undefined) continue;
+            var pos = atomPositions[idx];
+            var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('cx', pos.x.toFixed(1));
+            circle.setAttribute('cy', pos.y.toFixed(1));
+            circle.setAttribute('r', '14');
+            circle.setAttribute('fill', 'transparent');
+            circle.setAttribute('stroke', 'none');
+            circle.setAttribute('class', 'atom-' + idx + ' atom-hit-area');
+            circle.style.cursor = 'pointer';
+            circle.style.pointerEvents = 'all';
+            svgEl.appendChild(circle);
+        }
     }
 
-    function clearAtomHighlight(svgEl, atomIdx) {
-        var re = new RegExp('(^|\\s)atom-' + atomIdx + '(\\s|$)');
-        svgEl.querySelectorAll('[data-selected="true"]').forEach(function(el) {
-            if (!re.test(getSvgClassName(el))) return;
-            el.removeAttribute('data-selected');
-            el.setAttribute('stroke', el.getAttribute('data-orig-stroke') || '');
-            el.setAttribute('stroke-width', el.getAttribute('data-orig-stroke-width') || '');
-            el.setAttribute('fill', el.getAttribute('data-orig-fill') || '');
-            el.style.fontWeight = '';
+    /** Extract start and end points from an SVG path d attribute */
+    function extractPathEndpoints(d) {
+        // Match M/m commands (move to) and L/l/C/c/Q/q etc for endpoints
+        var numbers = d.match(/-?[\\d.]+/g);
+        if (!numbers || numbers.length < 4) return null;
+        return {
+            start: {x: parseFloat(numbers[0]), y: parseFloat(numbers[1])},
+            end: {x: parseFloat(numbers[numbers.length - 2]), y: parseFloat(numbers[numbers.length - 1])}
+        };
+    }
+
+    /* Re-render all molecules in the current inpaint card with updated highlights */
+    function reRenderAllMolHighlights() {
+        if (!currentInpaint) return;
+        var card = document.querySelector('.inpaint-mode');
+        if (!card) return;
+        var molDivs = card.querySelectorAll('.rdkit-mol');
+        molDivs.forEach(function(molDiv) {
+            var atomMap = JSON.parse(molDiv.getAttribute('data-atom-map') || '{}');
+            var selectedRdkit = [];
+            for (var key in atomMap) {
+                if (currentInpaint.selectedAtoms.has(atomMap[key])) {
+                    selectedRdkit.push(parseInt(key));
+                }
+            }
+            reRenderMolWithHighlights(molDiv, selectedRdkit);
         });
     }
 
@@ -881,24 +1142,31 @@ HTML_TEMPLATE = """
             }
         }
 
-        var card = btn.closest('.precursor-card');
-        var molDiv = card.querySelectorAll('.rdkit-mol')[molIdx];
-        var svgEl = molDiv ? molDiv.querySelector('svg') : null;
-
         if (allSelected) {
             // Deselect all
             for (var key in atomMap) {
                 currentInpaint.selectedAtoms.delete(atomMap[key]);
-                if (svgEl) clearAtomHighlight(svgEl, key);
             }
             btn.classList.remove('active');
         } else {
             // Select all
             for (var key in atomMap) {
                 currentInpaint.selectedAtoms.add(atomMap[key]);
-                if (svgEl) highlightAtom(svgEl, key);
             }
             btn.classList.add('active');
+        }
+
+        // Re-render this molecule with updated highlights
+        var card = btn.closest('.precursor-card');
+        var molDiv = card.querySelectorAll('.rdkit-mol')[molIdx];
+        if (molDiv) {
+            var selectedRdkit = [];
+            for (var key in atomMap) {
+                if (currentInpaint.selectedAtoms.has(atomMap[key])) {
+                    selectedRdkit.push(parseInt(key));
+                }
+            }
+            reRenderMolWithHighlights(molDiv, selectedRdkit);
         }
         updateAtomCount();
     }
@@ -930,27 +1198,251 @@ HTML_TEMPLATE = """
     }
 
     function updateAtomCount() {
-        var countEl = document.getElementById('atom-count');
+        var countEl = document.querySelector('.inpaint-mode .inpaint-atom-count');
         var regenBtn = document.querySelector('.inpaint-mode .btn-regenerate');
         var n = currentInpaint ? currentInpaint.selectedAtoms.size : 0;
+        var mode = (currentInpaint && currentInpaint.mode) || 'regenerate';
         var summary = getSelectedSubSmiles();
-        var text = n + ' atom' + (n !== 1 ? 's' : '') + ' selected';
+        var verb = mode === 'regenerate' ? ' to change' : ' to keep';
+        var text = n + ' atom' + (n !== 1 ? 's' : '') + ' selected' + verb;
         if (summary) text += ': ' + summary;
         if (countEl) countEl.textContent = text;
         if (regenBtn) regenBtn.disabled = (n === 0);
     }
 
+    /* ── Mode toggle: regenerate vs keep ── */
+    function setInpaintMode(mode, btn) {
+        if (!currentInpaint) return;
+        currentInpaint.mode = mode;
+        // Update toggle button styles
+        btn.parentElement.querySelectorAll('.mode-btn').forEach(function(b) {
+            b.className = 'mode-btn';
+            if (b.getAttribute('data-mode') === mode) {
+                b.classList.add(mode === 'regenerate' ? 'active-regenerate' : 'active-keep');
+            }
+        });
+        // Update instruction text
+        var instrEl = document.querySelector('.inpaint-mode .inpaint-instruction');
+        if (instrEl) {
+            if (mode === 'regenerate') {
+                instrEl.textContent = 'Click atoms you want to regenerate (red = will change). Other atoms stay fixed.';
+            } else {
+                instrEl.textContent = 'Click atoms you want to keep (blue = stays fixed). Other atoms will be regenerated.';
+            }
+        }
+        // Update molecule shortcut button labels
+        var card = document.querySelector('.inpaint-mode');
+        if (card) {
+            var gen = generations[currentInpaint.genIdx];
+            var result = gen.results[currentInpaint.resultIdx];
+            card.querySelectorAll('.btn-keep-mol').forEach(function(molBtn) {
+                var molIdx = parseInt(molBtn.getAttribute('data-mol-idx'));
+                if (result && result.atom_mapping && result.atom_mapping[molIdx]) {
+                    molBtn.textContent = getMolButtonLabel(molIdx, result.atom_mapping[molIdx].smiles);
+                }
+            });
+        }
+        // Re-render all highlights with new color
+        reRenderAllMolHighlights();
+        updateAtomCount();
+    }
+
+    /* ── Select All / Deselect All ── */
+    function selectAllAtoms() {
+        if (!currentInpaint) return;
+        var gen = generations[currentInpaint.genIdx];
+        var result = gen.results[currentInpaint.resultIdx];
+        if (!result || !result.atom_mapping) return;
+        result.atom_mapping.forEach(function(mi) {
+            for (var key in mi.atom_map) {
+                currentInpaint.selectedAtoms.add(mi.atom_map[key]);
+            }
+        });
+        reRenderAllMolHighlights();
+        updateAtomCount();
+        // Update molecule shortcut buttons
+        document.querySelectorAll('.btn-keep-mol').forEach(function(b) { b.classList.add('active'); });
+    }
+
+    function deselectAllAtoms() {
+        if (!currentInpaint) return;
+        currentInpaint.selectedAtoms.clear();
+        reRenderAllMolHighlights();
+        updateAtomCount();
+        document.querySelectorAll('.btn-keep-mol').forEach(function(b) { b.classList.remove('active'); });
+    }
+
+    /* ── Lasso selection ── */
+    function toggleLasso(btn) {
+        if (!currentInpaint) return;
+        currentInpaint.lassoActive = !currentInpaint.lassoActive;
+        currentInpaint.lassoPoints = [];
+        btn.classList.toggle('active', currentInpaint.lassoActive);
+        // Update cursor on all molecule SVGs
+        document.querySelectorAll('.inpaint-mode .rdkit-mol svg').forEach(function(svg) {
+            svg.style.cursor = currentInpaint.lassoActive ? 'crosshair' : 'pointer';
+        });
+        if (currentInpaint.lassoActive) {
+            setupLassoHandlers();
+        } else {
+            removeLassoHandlers();
+        }
+    }
+
+    var lassoMouseDown = null, lassoMouseMove = null, lassoMouseUp = null;
+
+    function setupLassoHandlers() {
+        var molDivs = document.querySelectorAll('.inpaint-mode .rdkit-mol');
+        molDivs.forEach(function(molDiv) {
+            var svgEl = molDiv.querySelector('svg');
+            if (!svgEl) return;
+
+            lassoMouseDown = function(e) {
+                if (!currentInpaint || !currentInpaint.lassoActive) return;
+                e.preventDefault();
+                currentInpaint.lassoPoints = [];
+                var pt = getSvgPoint(svgEl, e);
+                currentInpaint.lassoPoints.push(pt);
+                // Create polyline overlay
+                var polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+                polyline.setAttribute('id', 'lasso-line');
+                polyline.setAttribute('fill', 'none');
+                polyline.setAttribute('stroke', '#e74c3c');
+                polyline.setAttribute('stroke-width', '2');
+                polyline.setAttribute('stroke-dasharray', '5,5');
+                polyline.setAttribute('pointer-events', 'none');
+                svgEl.appendChild(polyline);
+
+                lassoMouseMove = function(ev) {
+                    if (!currentInpaint || !currentInpaint.lassoActive) return;
+                    var p = getSvgPoint(svgEl, ev);
+                    currentInpaint.lassoPoints.push(p);
+                    var points = currentInpaint.lassoPoints.map(function(pt) { return pt.x + ',' + pt.y; }).join(' ');
+                    var line = svgEl.querySelector('#lasso-line');
+                    if (line) line.setAttribute('points', points);
+                };
+
+                lassoMouseUp = function(ev) {
+                    if (!currentInpaint || !currentInpaint.lassoActive) return;
+                    svgEl.removeEventListener('mousemove', lassoMouseMove);
+                    svgEl.removeEventListener('mouseup', lassoMouseUp);
+                    // Remove polyline
+                    var line = svgEl.querySelector('#lasso-line');
+                    if (line) line.remove();
+                    // Select atoms inside the lasso polygon
+                    if (currentInpaint.lassoPoints.length >= 3) {
+                        selectAtomsInLasso(molDiv, currentInpaint.lassoPoints);
+                    }
+                    currentInpaint.lassoPoints = [];
+                };
+
+                svgEl.addEventListener('mousemove', lassoMouseMove);
+                svgEl.addEventListener('mouseup', lassoMouseUp);
+            };
+            svgEl.addEventListener('mousedown', lassoMouseDown);
+            svgEl.setAttribute('data-lasso-bound', 'true');
+        });
+    }
+
+    function removeLassoHandlers() {
+        document.querySelectorAll('.inpaint-mode .rdkit-mol svg[data-lasso-bound]').forEach(function(svgEl) {
+            if (lassoMouseDown) svgEl.removeEventListener('mousedown', lassoMouseDown);
+            svgEl.removeAttribute('data-lasso-bound');
+        });
+    }
+
+    function getSvgPoint(svgEl, event) {
+        var rect = svgEl.getBoundingClientRect();
+        var viewBox = svgEl.viewBox.baseVal;
+        var scaleX = viewBox.width / rect.width;
+        var scaleY = viewBox.height / rect.height;
+        return {
+            x: (event.clientX - rect.left) * scaleX + viewBox.x,
+            y: (event.clientY - rect.top) * scaleY + viewBox.y
+        };
+    }
+
+    function selectAtomsInLasso(molDiv, polygon) {
+        var svgEl = molDiv.querySelector('svg');
+        if (!svgEl) return;
+        var atomMap = JSON.parse(molDiv.getAttribute('data-atom-map') || '{}');
+
+        for (var rdkitIdx in atomMap) {
+            // Find the center of this atom's SVG elements
+            var re = new RegExp('(^|\\\\s)atom-' + rdkitIdx + '(\\\\s|$)');
+            var elements = svgEl.querySelectorAll('[class*="atom-' + rdkitIdx + '"]');
+            var cx = 0, cy = 0, count = 0;
+            elements.forEach(function(el) {
+                var cls = (el.className && el.className.baseVal != null) ? el.className.baseVal : (el.className || '');
+                if (!re.test(cls)) return;
+                try {
+                    var bbox = el.getBBox();
+                    cx += bbox.x + bbox.width / 2;
+                    cy += bbox.y + bbox.height / 2;
+                    count++;
+                } catch(e) {}
+            });
+            if (count === 0) continue;
+            cx /= count; cy /= count;
+
+            // Point-in-polygon test (ray casting)
+            if (pointInPolygon(cx, cy, polygon)) {
+                currentInpaint.selectedAtoms.add(atomMap[rdkitIdx]);
+            }
+        }
+        // Re-render with updated highlights
+        var selectedRdkit = [];
+        for (var key in atomMap) {
+            if (currentInpaint.selectedAtoms.has(atomMap[key])) {
+                selectedRdkit.push(parseInt(key));
+            }
+        }
+        reRenderMolWithHighlights(molDiv, selectedRdkit);
+        // Re-attach lasso handlers since SVG was replaced
+        if (currentInpaint.lassoActive) {
+            var newSvg = molDiv.querySelector('svg');
+            if (newSvg && lassoMouseDown) {
+                newSvg.addEventListener('mousedown', lassoMouseDown);
+                newSvg.setAttribute('data-lasso-bound', 'true');
+                newSvg.style.cursor = 'crosshair';
+            }
+        }
+        updateAtomCount();
+    }
+
+    function pointInPolygon(x, y, polygon) {
+        var inside = false;
+        for (var i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+            var xi = polygon[i].x, yi = polygon[i].y;
+            var xj = polygon[j].x, yj = polygon[j].y;
+            var intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+            if (intersect) inside = !inside;
+        }
+        return inside;
+    }
+
     function cancelInpaint() {
         if (!currentInpaint) return;
+        // Clean up lasso handlers if active
+        if (currentInpaint.lassoActive) {
+            removeLassoHandlers();
+        }
         var cards = document.querySelectorAll('.inpaint-mode');
         cards.forEach(function(card) {
             card.classList.remove('inpaint-mode');
+            card.classList.remove('inpaint-focus-panel');
             var toolbar = card.querySelector('.inpaint-toolbar');
             if (toolbar) toolbar.style.display = 'none';
-            // Clear highlights
-            card.querySelectorAll('[data-selected="true"]').forEach(function(el) {
-                el.style.filter = '';
-                el.removeAttribute('data-selected');
+            // Restore original (compact) SVG HTML
+            var svgContainer = card.querySelector('.mol-svg');
+            var origHtml = svgContainer ? svgContainer.getAttribute('data-orig-html') : null;
+            if (origHtml) {
+                svgContainer.innerHTML = origHtml;
+                svgContainer.removeAttribute('data-orig-html');
+            }
+            // Remove click-bound markers so handlers can be re-attached next time
+            card.querySelectorAll('.rdkit-mol[data-click-bound]').forEach(function(el) {
+                el.removeAttribute('data-click-bound');
             });
         });
         currentInpaint = null;
@@ -970,19 +1462,43 @@ HTML_TEMPLATE = """
         var gen = generations[genIdx];
         var result = gen.results[resultIdx];
 
-        var selectedNodes = Array.from(currentInpaint.selectedAtoms);
-        var nPrecursors = parseInt(document.querySelector('[name="n_precursors"]').value) || 1;
-        var diffusionSteps = parseInt(document.querySelector('[name="diffusion_steps"]').value) || 1;
+        // Read from inpaint toolbar controls (fall back to main form)
+        var inpaintPrecEl = document.querySelector('.inpaint-mode .inpaint-n-precursors');
+        var inpaintStepsEl = document.querySelector('.inpaint-mode .inpaint-diff-steps');
+        var nPrecursors = inpaintPrecEl ? (parseInt(inpaintPrecEl.value) || 1) : (parseInt(document.querySelector('[name="n_precursors"]').value) || 1);
+        var diffusionSteps = inpaintStepsEl ? (parseInt(inpaintStepsEl.value) || 1) : (parseInt(document.querySelector('[name="diffusion_steps"]').value) || 1);
+
+        // In "regenerate" mode, the user selected atoms to CHANGE.
+        // The backend expects atoms to KEEP fixed, so we invert the selection.
+        var nodesToKeep;
+        var mode = currentInpaint.mode || 'regenerate';
+        if (mode === 'regenerate') {
+            var allNodes = new Set();
+            result.atom_mapping.forEach(function(mi) {
+                for (var key in mi.atom_map) {
+                    allNodes.add(mi.atom_map[key]);
+                }
+            });
+            nodesToKeep = Array.from(allNodes).filter(function(n) {
+                return !currentInpaint.selectedAtoms.has(n);
+            });
+        } else {
+            nodesToKeep = Array.from(currentInpaint.selectedAtoms);
+        }
 
         var summary = getSelectedSubSmiles();
-        var fixedInfo = 'Fixed ' + summary + ' (' + selectedNodes.length + ' atoms) from #' + (resultIdx + 1) + ', gen ' + (genIdx + 1);
+        var nSelected = currentInpaint.selectedAtoms.size;
+        var fixedInfo = (mode === 'regenerate'
+            ? 'Regenerating ' + summary + ' (' + nSelected + ' atoms changed)'
+            : 'Fixed ' + summary + ' (' + nSelected + ' atoms kept)')
+            + ' from #' + (resultIdx + 1) + ', gen ' + (genIdx + 1);
 
         cancelInpaint();
 
         // Show progress
         var submitBtn = document.getElementById('submit-btn');
         submitBtn.disabled = true;
-        showProgress('Running inpainting with ' + selectedNodes.length + ' fixed atoms...');
+        showProgress('Running inpainting with ' + nodesToKeep.length + ' fixed atoms...');
 
         fetch('/api/inpaint', {
             method: 'POST',
@@ -990,7 +1506,7 @@ HTML_TEMPLATE = """
             body: JSON.stringify({
                 product_smiles: gen.targetSmiles,
                 previous_sample_data: result.sample_data,
-                selected_node_indices: selectedNodes,
+                selected_node_indices: nodesToKeep,
                 n_precursors: nPrecursors,
                 diffusion_steps: diffusionSteps
             })
