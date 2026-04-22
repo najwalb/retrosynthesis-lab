@@ -252,6 +252,22 @@ HTML_TEMPLATE = """
             border-radius: 8px;
             border-left: 4px solid #c0392b;
         }
+        .inpaint-empty {
+            color: #7a5b00;
+            background: #fff8e1;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #e0a800;
+            margin-top: 8px;
+        }
+        .inpaint-empty strong { color: #5a4300; }
+        .inpaint-empty details { margin-top: 8px; }
+        .inpaint-empty code {
+            background: rgba(0,0,0,0.05);
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
         .reaction-class-badge {
             display: inline-block;
             background: #e8eaf6;
@@ -522,6 +538,7 @@ HTML_TEMPLATE = """
                        value="{{ smiles or '' }}" id="smiles-input">
                 <div class="examples">
                     Examples:
+                    <code onclick="setSmiles('N#CC1=CC=CN=C1C1=CC=CC(Cl)=N1')">Chloro-bipyridine nitrile</code>
                     <code onclick="setSmiles('CC(=O)Oc1ccccc1C(=O)O')">Aspirin</code>
                     <code onclick="setSmiles('CN1C=NC2=C1C(=O)N(C(=O)N2C)C')">Caffeine</code>
                     <code onclick="setSmiles('CC(C)Cc1ccc(cc1)C(C)C(=O)O')">Ibuprofen</code>
@@ -532,11 +549,11 @@ HTML_TEMPLATE = """
             <div class="params-grid">
                 <div class="param-box">
                     <label>Number of Precursors</label>
-                    <input type="number" name="n_precursors" value="{{ n_precursors or 1 }}" min="1" max="100">
+                    <input type="number" name="n_precursors" value="{{ n_precursors or 10 }}" min="1" max="100">
                 </div>
                 <div class="param-box">
                     <label>Diffusion Steps</label>
-                    <input type="number" name="diffusion_steps" value="{{ diffusion_steps or 1 }}" min="1" max="50" step="1">
+                    <input type="number" name="diffusion_steps" value="{{ diffusion_steps or 10 }}" min="1" max="50" step="1">
                     <div class="param-hint">Must divide 50 (e.g. 1, 2, 5, 10, 25, 50)</div>
                 </div>
             </div>
@@ -769,6 +786,15 @@ HTML_TEMPLATE = """
         });
     }
 
+    function escapeHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     /* ── Inpaint mode ── */
     function enterInpaintMode(btn) {
         if (!RDKitModule) {
@@ -840,10 +866,10 @@ HTML_TEMPLATE = """
                 '<div class="toolbar-row keep-mol-buttons"></div>' +
                 '<div class="toolbar-row" style="gap:16px;">' +
                     '<label style="font-size:12px;color:#555;display:flex;align-items:center;gap:4px;">' +
-                        'Precursors <input type="number" class="inpaint-n-precursors" min="1" max="100" value="1" style="width:50px;padding:3px 6px;border:1px solid #ccc;border-radius:4px;font-size:12px;">' +
+                        'Precursors <input type="number" class="inpaint-n-precursors" min="1" max="100" value="10" style="width:50px;padding:3px 6px;border:1px solid #ccc;border-radius:4px;font-size:12px;">' +
                     '</label>' +
                     '<label style="font-size:12px;color:#555;display:flex;align-items:center;gap:4px;">' +
-                        'Diff. steps <input type="number" class="inpaint-diff-steps" min="1" max="50" value="1" style="width:50px;padding:3px 6px;border:1px solid #ccc;border-radius:4px;font-size:12px;">' +
+                        'Diff. steps <input type="number" class="inpaint-diff-steps" min="1" max="50" value="10" style="width:50px;padding:3px 6px;border:1px solid #ccc;border-radius:4px;font-size:12px;">' +
                     '</label>' +
                 '</div>' +
                 '<div class="toolbar-row">' +
@@ -978,6 +1004,28 @@ HTML_TEMPLATE = """
         });
     }
 
+    /* Parse a molblock and return indices of bonds whose endpoints are both in
+     * `selectedSet` (a plain object map from atomIdx -> truthy). Used for
+     * bond-inclusive highlight rendering. */
+    function bondsBetweenSelectedAtoms(mol, selectedSet) {
+        var out = [];
+        try {
+            var molblock = mol.get_molblock();
+            var lines = molblock.split('\\n');
+            // V2000 counts line is line index 3: "%3d%3d..." -> atoms, bonds
+            var counts = lines[3];
+            var nAtoms = parseInt(counts.substring(0, 3));
+            var nBonds = parseInt(counts.substring(3, 6));
+            for (var i = 0; i < nBonds; i++) {
+                var bondLine = lines[4 + nAtoms + i];
+                var a1 = parseInt(bondLine.substring(0, 3)) - 1;  // V2000 is 1-indexed
+                var a2 = parseInt(bondLine.substring(3, 6)) - 1;
+                if (selectedSet[a1] && selectedSet[a2]) out.push(i);
+            }
+        } catch (e) { /* best effort; fall back to atom-only highlights */ }
+        return out;
+    }
+
     /* Re-render a single molecule SVG with RDKit.js native highlighting */
     function reRenderMolWithHighlights(molDiv, selectedRdkitAtoms) {
         var smiles = molDiv.getAttribute('data-smiles');
@@ -988,8 +1036,15 @@ HTML_TEMPLATE = """
         var mode = (currentInpaint && currentInpaint.mode) || 'regenerate';
         var color = mode === 'regenerate' ? [0.91, 0.30, 0.24] : [0.18, 0.62, 0.78];
 
+        // Also highlight bonds whose both endpoints are selected — this makes
+        // selection visible on implicit-H carbons that RDKit doesn't label in SVG.
+        var selectedSet = {};
+        selectedRdkitAtoms.forEach(function(a) { selectedSet[a] = true; });
+        var bondsToHighlight = bondsBetweenSelectedAtoms(mol, selectedSet);
+
         var mdetails = {
             atoms: selectedRdkitAtoms,
+            bonds: bondsToHighlight,
             highlightColour: color,
             fillHighlights: true,
             addAtomIndices: true,
@@ -1171,28 +1226,95 @@ HTML_TEMPLATE = """
         updateAtomCount();
     }
 
+    /* Parse molblock atom + bond sections so we can walk the selected sub-graph.
+     * Returns {symbols: {idx: 'C'|'N'|...}, bonds: [{a:i, b:j, order:1|2|3}, ...]}
+     * or null on parse failure. */
+    function parseMolGraph(mol) {
+        try {
+            var lines = mol.get_molblock().split('\\n');
+            var counts = lines[3];
+            var nAtoms = parseInt(counts.substring(0, 3));
+            var nBonds = parseInt(counts.substring(3, 6));
+            var symbols = {};
+            for (var i = 0; i < nAtoms; i++) {
+                var atomLine = lines[4 + i];
+                // V2000 atom symbol lives at columns 31-34 (after 3x10-char coords)
+                var sym = atomLine.substring(31, 34).trim();
+                symbols[i] = sym || '*';
+            }
+            var bonds = [];
+            for (var j = 0; j < nBonds; j++) {
+                var bondLine = lines[4 + nAtoms + j];
+                bonds.push({
+                    a: parseInt(bondLine.substring(0, 3)) - 1,
+                    b: parseInt(bondLine.substring(3, 6)) - 1,
+                    order: parseInt(bondLine.substring(6, 9)) || 1,
+                });
+            }
+            return {symbols: symbols, bonds: bonds};
+        } catch (e) { return null; }
+    }
+
+    /* Walk connected components inside the selected atom subset, emitting a
+     * short SMILES-like fragment descriptor per component ("CC", "C=O", etc). */
+    function selectedFragmentsFor(mol, selectedSet) {
+        var g = parseMolGraph(mol);
+        if (!g) return [];
+        // Adjacency inside the selection only
+        var adj = {};
+        Object.keys(selectedSet).forEach(function(k) { adj[k] = []; });
+        g.bonds.forEach(function(bd) {
+            if (selectedSet[bd.a] && selectedSet[bd.b]) {
+                adj[bd.a].push({n: bd.b, order: bd.order});
+                adj[bd.b].push({n: bd.a, order: bd.order});
+            }
+        });
+        var orderChar = {1: '', 2: '=', 3: '#', 4: ''};  // 4 = aromatic, render as single
+        var visited = {};
+        var fragments = [];
+        Object.keys(selectedSet).sort(function(a, b) { return parseInt(a) - parseInt(b); })
+            .forEach(function(startKey) {
+                if (visited[startKey]) return;
+                var start = parseInt(startKey);
+                // DFS emitting symbols and bond orders along first-visit edges
+                var frag = g.symbols[start] || '?';
+                visited[start] = true;
+                var stack = [start];
+                while (stack.length) {
+                    var node = stack.pop();
+                    (adj[node] || []).forEach(function(edge) {
+                        if (!visited[edge.n]) {
+                            visited[edge.n] = true;
+                            frag += (orderChar[edge.order] || '') + (g.symbols[edge.n] || '?');
+                            stack.push(edge.n);
+                        }
+                    });
+                }
+                fragments.push(frag);
+            });
+        return fragments;
+    }
+
     function getSelectedSubSmiles() {
-        // Build a summary of which atoms are selected per molecule
-        if (!currentInpaint) return '';
+        if (!currentInpaint || !RDKitModule) return '';
         var gen = generations[currentInpaint.genIdx];
         if (!gen) return '';
         var result = gen.results[currentInpaint.resultIdx];
         if (!result || !result.atom_mapping) return '';
         var parts = [];
         result.atom_mapping.forEach(function(mi) {
-            // Find which rdkit atom indices in this molecule are selected
-            var selectedRdkit = [];
+            var selectedSet = {};
             for (var rdkitIdx in mi.atom_map) {
                 if (currentInpaint.selectedAtoms.has(mi.atom_map[rdkitIdx])) {
-                    selectedRdkit.push(parseInt(rdkitIdx));
+                    selectedSet[parseInt(rdkitIdx)] = true;
                 }
             }
-            var total = Object.keys(mi.atom_map).length;
-            if (selectedRdkit.length === total) {
-                parts.push(mi.smiles);
-            } else if (selectedRdkit.length > 0) {
-                parts.push(selectedRdkit.length + '/' + total + ' atoms of ' + mi.smiles);
-            }
+            if (Object.keys(selectedSet).length === 0) return;
+            var mol = RDKitModule.get_mol(mi.smiles);
+            if (!mol) return;
+            var frags = selectedFragmentsFor(mol, selectedSet);
+            mol.delete();
+            if (frags.length) parts.push(frags.join(', '));
         });
         return parts.join(' + ');
     }
@@ -1468,22 +1590,59 @@ HTML_TEMPLATE = """
         var nPrecursors = inpaintPrecEl ? (parseInt(inpaintPrecEl.value) || 1) : (parseInt(document.querySelector('[name="n_precursors"]').value) || 1);
         var diffusionSteps = inpaintStepsEl ? (parseInt(inpaintStepsEl.value) || 1) : (parseInt(document.querySelector('[name="diffusion_steps"]').value) || 1);
 
+        // Collect every real atom in this result. Start from the atom_mapping
+        // (user-addressable reactant atoms), then fold in any remaining real
+        // atom from node_mask so that product/supernode atoms — which the user
+        // can't see and the structural mask keeps frozen anyway — are always
+        // treated as "keep". Without this, the backend's strict change-must-
+        // actually-change check would flag those structurally-fixed atoms as
+        // stuck on every sample.
+        var allNodes = new Set();
+        result.atom_mapping.forEach(function(mi) {
+            for (var key in mi.atom_map) {
+                allNodes.add(mi.atom_map[key]);
+            }
+        });
+        var sampleData = result.sample_data || {};
+        var nodeMask = sampleData.node_mask;
+        if (nodeMask) {
+            var row = Array.isArray(nodeMask[0]) ? nodeMask[0] : nodeMask;
+            for (var i = 0; i < row.length; i++) {
+                if (row[i]) allNodes.add(i);
+            }
+        }
+
         // In "regenerate" mode, the user selected atoms to CHANGE.
         // The backend expects atoms to KEEP fixed, so we invert the selection.
         var nodesToKeep;
         var mode = currentInpaint.mode || 'regenerate';
         if (mode === 'regenerate') {
-            var allNodes = new Set();
-            result.atom_mapping.forEach(function(mi) {
-                for (var key in mi.atom_map) {
-                    allNodes.add(mi.atom_map[key]);
-                }
-            });
             nodesToKeep = Array.from(allNodes).filter(function(n) {
                 return !currentInpaint.selectedAtoms.has(n);
             });
         } else {
-            nodesToKeep = Array.from(currentInpaint.selectedAtoms);
+            // Keep mode: user's selection plus every non-addressable real atom
+            // (product/supernode) so the structural-mask atoms don't get
+            // double-counted as change-atoms.
+            var keep = new Set(currentInpaint.selectedAtoms);
+            allNodes.forEach(function(n) {
+                // Any real atom not in atom_mapping stays fixed too
+                var inMapping = false;
+                result.atom_mapping.forEach(function(mi) {
+                    for (var k in mi.atom_map) if (mi.atom_map[k] === n) inMapping = true;
+                });
+                if (!inMapping) keep.add(n);
+            });
+            nodesToKeep = Array.from(keep);
+        }
+
+        // Guard: if every real atom is marked fixed there is nothing to
+        // regenerate — skip the API call and let the user adjust their
+        // selection.
+        if (allNodes.size > 0 && nodesToKeep.length >= allNodes.size) {
+            alert("You've marked every atom to keep fixed — nothing to regenerate. "
+                  + "Deselect at least one atom, or switch to 'Select atoms to change' mode.");
+            return;
         }
 
         var summary = getSelectedSubSmiles();
@@ -1583,29 +1742,53 @@ HTML_TEMPLATE = """
             '<span class="generation-info">Inpainted: ' + fixedInfo + '</span>' +
             '</div>';
 
-        var cardsHtml = '<div class="precursors-grid">';
-        results.forEach(function(result, idx) {
-            cardsHtml += '<div class="precursor-card" data-result-index="' + idx + '">' +
-                '<div class="precursor-header">' +
-                    '<span class="precursor-rank">#' + (idx + 1) + '</span>' +
-                    '<span class="precursor-score">Score: ' + result.score.toFixed(3) + '</span>' +
-                '</div>' +
-                '<div class="mol-svg"></div>' +
-                '<div class="precursor-smiles">' + result.precursors + '</div>' +
-                '<div class="precursor-actions">' +
-                    '<button class="btn-lookup" onclick="lookupCompounds(this, &quot;' + result.precursors.replace(/"/g, '&quot;') + '&quot;)">Search PubChem</button>' +
-                    '<button class="btn-inpaint" onclick="enterInpaintMode(this)">Inpaint</button>' +
-                '</div>' +
-                '<div class="compound-info" style="display:none;"></div>' +
+        var bodyHtml = '';
+        if ((!results || results.length === 0) && data.failure) {
+            var stuck = data.failure.stuck_atoms || [];
+            var stuckDetail = stuck.map(function(a) {
+                return a.element + ' @ ' + a.index;
+            }).join(', ') || '(none)';
+            var requested = data.failure.requested_change_atoms || [];
+            var requestedDetail = requested.map(function(a) {
+                return a.element + ' @ ' + a.index;
+            }).join(', ') || '(none)';
+            bodyHtml = '<div class="inpaint-empty">' +
+                '<strong>No valid inpainting result.</strong>' +
+                '<p>' + escapeHtml(data.failure.message) + '</p>' +
+                '<details>' +
+                    '<summary>Details</summary>' +
+                    '<p>Requested to change: <code>' + escapeHtml(requestedDetail) + '</code></p>' +
+                    '<p>Stuck (unchanged in all ' + data.failure.n_samples + ' samples): <code>' + escapeHtml(stuckDetail) + '</code></p>' +
+                '</details>' +
                 '</div>';
-        });
-        cardsHtml += '</div>';
+        } else {
+            var cardsHtml = '<div class="precursors-grid">';
+            results.forEach(function(result, idx) {
+                cardsHtml += '<div class="precursor-card" data-result-index="' + idx + '">' +
+                    '<div class="precursor-header">' +
+                        '<span class="precursor-rank">#' + (idx + 1) + '</span>' +
+                        '<span class="precursor-score">Score: ' + result.score.toFixed(3) + '</span>' +
+                    '</div>' +
+                    '<div class="mol-svg"></div>' +
+                    '<div class="precursor-smiles">' + result.precursors + '</div>' +
+                    '<div class="precursor-actions">' +
+                        '<button class="btn-lookup" onclick="lookupCompounds(this, &quot;' + result.precursors.replace(/"/g, '&quot;') + '&quot;)">Search PubChem</button>' +
+                        '<button class="btn-inpaint" onclick="enterInpaintMode(this)">Inpaint</button>' +
+                    '</div>' +
+                    '<div class="compound-info" style="display:none;"></div>' +
+                    '</div>';
+            });
+            cardsHtml += '</div>';
+            bodyHtml = cardsHtml;
+        }
 
-        section.innerHTML = headerHtml + cardsHtml;
+        section.innerHTML = headerHtml + bodyHtml;
         rc.appendChild(section);
 
-        // Render molecules with RDKit.js (for atom selection)
-        renderInpaintGenerationMols(section, results);
+        // Render molecules with RDKit.js (for atom selection) — skip if empty
+        if (results && results.length > 0) {
+            renderInpaintGenerationMols(section, results);
+        }
 
         // Scroll to the new generation
         section.scrollIntoView({behavior: 'smooth', block: 'start'});
@@ -1919,8 +2102,20 @@ def api_inpaint():
     if not (1 <= n_precursors <= 100):
         return jsonify({'error': 'n_precursors must be between 1 and 100'}), 400
 
+    # Defensive guard: reject if every real atom is marked fixed — nothing to
+    # regenerate, so skip inference entirely. Frontend should have caught this.
+    node_mask = previous_sample_data.get('node_mask') or []
+    node_mask_row = node_mask[0] if node_mask and isinstance(node_mask[0], list) else node_mask
+    n_real = sum(1 for v in node_mask_row if v)
+    n_fixed = sum(1 for i in selected_node_indices if 0 <= int(i) < len(node_mask_row) and node_mask_row[int(i)])
+    if n_real > 0 and n_fixed >= n_real:
+        return jsonify({
+            'error': 'All atoms are marked fixed — nothing to regenerate.',
+            'hint':  'Deselect at least one atom before submitting.',
+        }), 400
+
     try:
-        results = predict.predict_with_inpainting(
+        results, failure_info = predict.predict_with_inpainting(
             product_smiles=product_smiles,
             previous_sample_data=previous_sample_data,
             inpaint_node_indices=selected_node_indices,
@@ -1928,7 +2123,41 @@ def api_inpaint():
             diffusion_steps=diffusion_steps,
         )
     except Exception as e:
-        return jsonify({'error': f'Inpainting failed: {str(e)}'}), 500
+        import traceback
+        tb = traceback.format_exc()
+        application.logger.error(f'Inpainting failed:\n{tb}')
+        return jsonify({'error': f'Inpainting failed: {str(e)}', 'traceback': tb.splitlines()[-8:]}), 500
+
+    # Empty results + failure diagnostics: build a user-facing message that
+    # names the atoms which stayed stuck across every sample.
+    if not results and failure_info:
+        stuck = failure_info.get('stuck_atoms', [])
+        if stuck:
+            elem_str = ', '.join(a['element'] for a in stuck)
+            idx_str = ', '.join(str(a['index']) for a in stuck)
+            msg = (
+                f"No precursor satisfied the inpainting constraint. Across all "
+                f"{failure_info['n_samples']} samples, the following atoms were "
+                f"marked to change but stayed the same: {elem_str} "
+                f"(positions {idx_str}). Try more diffusion steps, a different "
+                f"product, or mark different atoms."
+            )
+        else:
+            msg = (
+                f"No precursor satisfied the inpainting constraint across all "
+                f"{failure_info['n_samples']} samples. Try more diffusion steps."
+            )
+        return jsonify({
+            'target_smiles': product_smiles,
+            'results': [],
+            'fixed_atoms_info': f'{len(selected_node_indices)} atoms fixed',
+            'failure': {
+                'message': msg,
+                'stuck_atoms': stuck,
+                'requested_change_atoms': failure_info.get('requested_change_atoms', []),
+                'n_samples': failure_info['n_samples'],
+            },
+        })
 
     # Add SVGs for initial display
     for r in results:
