@@ -82,6 +82,336 @@ RESULTS_TEMPLATE = """
 {% endif %}
 """
 
+# Landing page template (served at /)
+LANDING_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RxnLab — ML models for retrosynthesis</title>
+    <meta name="description" content="A research platform for testing, steering, and analyzing single-step retrosynthesis models.">
+    <style>
+        * { box-sizing: border-box; }
+        :root {
+            --bg: #fafaf7;
+            --bg-elev: #ffffff;
+            --ink: #1a1a2e;
+            --ink-soft: #4a4a5a;
+            --muted: #7a7a85;
+            --border: #e8e8e3;
+            --border-strong: #d8d8d2;
+            --accent: #0d8a8a;
+            --accent-hover: #0a6e6e;
+            --accent-soft: #e6f2f2;
+        }
+        html, body { margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: var(--ink);
+            background: var(--bg);
+            line-height: 1.55;
+            -webkit-font-smoothing: antialiased;
+        }
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #4a6fa5, #5a8fd5, #0d8a8a);
+            z-index: 1000;
+        }
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { color: var(--accent-hover); text-decoration: underline; }
+
+        .wrap { max-width: 1100px; margin: 0 auto; padding: 0 28px; }
+
+        /* Top bar */
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 22px 0 0;
+        }
+        .wordmark {
+            font-family: Georgia, 'Iowan Old Style', serif;
+            font-size: 22px;
+            font-weight: 600;
+            color: var(--ink);
+            letter-spacing: -0.01em;
+        }
+        .wordmark .dot { color: var(--accent); }
+        .nav { display: flex; align-items: center; gap: 22px; font-size: 14px; }
+        .nav a { color: var(--ink-soft); }
+        .nav a:hover { color: var(--ink); text-decoration: none; }
+        .nav .soon { color: var(--muted); cursor: default; }
+        .nav .soon:hover { color: var(--muted); }
+
+        /* Hero */
+        .hero { padding: 80px 0 70px; }
+        .eyebrow {
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.12em;
+            color: var(--accent);
+            text-transform: uppercase;
+            margin-bottom: 18px;
+        }
+        .hero h1 {
+            font-family: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+            font-size: clamp(36px, 5.5vw, 58px);
+            line-height: 1.08;
+            letter-spacing: -0.02em;
+            font-weight: 500;
+            margin: 0 0 22px;
+            max-width: 820px;
+        }
+        .hero h1 em {
+            font-style: italic;
+            color: var(--accent);
+        }
+        .hero .lede {
+            font-size: 18px;
+            color: var(--ink-soft);
+            max-width: 640px;
+            margin: 0 0 32px;
+        }
+        .cta-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 13px 22px;
+            font-size: 15px;
+            font-weight: 600;
+            border-radius: 8px;
+            border: 1px solid transparent;
+            cursor: pointer;
+            transition: transform 0.12s ease, background 0.15s ease, border-color 0.15s ease;
+            text-decoration: none;
+        }
+        .btn-primary { background: var(--ink); color: #fff; }
+        .btn-primary:hover { background: #000; color: #fff; text-decoration: none; transform: translateY(-1px); }
+        .btn-secondary {
+            background: transparent;
+            color: var(--ink);
+            border-color: var(--border-strong);
+        }
+        .btn-secondary:hover { background: #fff; color: var(--ink); border-color: var(--ink); text-decoration: none; }
+        .btn .arrow { transition: transform 0.15s ease; }
+        .btn:hover .arrow { transform: translateX(3px); }
+
+        /* Section divider with label */
+        .section { padding: 30px 0 80px; }
+        .section-label {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.12em;
+            color: var(--muted);
+            text-transform: uppercase;
+            margin-bottom: 28px;
+        }
+        .section-label::before,
+        .section-label::after {
+            content: '';
+            flex: 0 0 28px;
+            height: 1px;
+            background: var(--border-strong);
+        }
+        .section-label::after { flex: 1; }
+
+        /* Project cards grid */
+        .projects {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 18px;
+        }
+        .card {
+            position: relative;
+            background: var(--bg-elev);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 26px 24px 24px;
+            display: flex;
+            flex-direction: column;
+            transition: border-color 0.15s ease, box-shadow 0.2s ease, transform 0.15s ease;
+        }
+        .card.live:hover {
+            border-color: var(--ink);
+            box-shadow: 0 8px 24px rgba(26, 26, 46, 0.08);
+            transform: translateY(-2px);
+        }
+        .card .tag {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--accent);
+            background: var(--accent-soft);
+            padding: 4px 10px;
+            border-radius: 999px;
+            align-self: flex-start;
+            margin-bottom: 14px;
+        }
+        .card.soon .tag { color: var(--muted); background: #f0f0ec; }
+        .card h3 {
+            font-family: Georgia, 'Iowan Old Style', serif;
+            font-size: 22px;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+            margin: 0 0 8px;
+            color: var(--ink);
+        }
+        .card p {
+            font-size: 14.5px;
+            color: var(--ink-soft);
+            margin: 0 0 22px;
+            flex-grow: 1;
+        }
+        .card .card-foot {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .card .card-foot .open {
+            color: var(--accent);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .card.live a.card-link {
+            position: absolute;
+            inset: 0;
+            border-radius: 12px;
+            text-indent: -9999px;
+            overflow: hidden;
+        }
+        .card.live:hover .open .arrow { transform: translateX(3px); }
+        .card .open .arrow { transition: transform 0.15s ease; }
+        .card .soon-pill {
+            color: var(--muted);
+            background: #f0f0ec;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+        }
+
+        /* Footer */
+        footer {
+            border-top: 1px solid var(--border);
+            padding: 34px 0 44px;
+            margin-top: 40px;
+            color: var(--muted);
+            font-size: 13.5px;
+        }
+        footer .footer-row {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            gap: 14px;
+        }
+        footer a { color: var(--ink-soft); }
+        footer a:hover { color: var(--ink); }
+        footer .note { max-width: 520px; }
+
+        @media (max-width: 640px) {
+            .wrap { padding: 0 20px; }
+            .topbar { flex-wrap: wrap; gap: 12px; }
+            .nav { gap: 16px; font-size: 13px; }
+            .hero { padding: 56px 0 48px; }
+            .section { padding: 20px 0 56px; }
+            footer .footer-row { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <header class="topbar">
+            <a href="/" class="wordmark">Rxn<span class="dot">·</span>Lab</a>
+            <nav class="nav">
+                <a href="/diffalign">DiffAlign</a>
+                <a href="#projects" class="soon" title="Coming soon">SCR</a>
+                <a href="#projects" class="soon" title="Coming soon">RetroAnalyze</a>
+                <a href="https://github.com/NajwaLaabid/RetroLab" target="_blank" rel="noopener">GitHub</a>
+            </nav>
+        </header>
+
+        <section class="hero">
+            <div class="eyebrow">A retrosynthesis research platform</div>
+            <h1>ML-driven retrosynthesis, <em>one reaction at a time.</em></h1>
+            <p class="lede">
+                RxnLab is a research playground for testing, steering, and analyzing
+                machine-learning models for single-step retrosynthesis. Built for
+                chemists and ML researchers to explore what modern generative models
+                can do at the reaction level.
+            </p>
+            <div class="cta-row">
+                <a class="btn btn-primary" href="/diffalign">
+                    Open DiffAlign <span class="arrow">→</span>
+                </a>
+                <a class="btn btn-secondary" href="https://github.com/NajwaLaabid/RetroLab" target="_blank" rel="noopener">
+                    View on GitHub
+                </a>
+            </div>
+        </section>
+
+        <section class="section" id="projects">
+            <div class="section-label">Projects</div>
+            <div class="projects">
+                <article class="card live">
+                    <span class="tag">Single-step</span>
+                    <h3>DiffAlign</h3>
+                    <p>Equivariant diffusion models for single-step retrosynthesis. Enter a target SMILES and generate ranked precursor sets with interactive inpainting.</p>
+                    <div class="card-foot">
+                        <span class="open">Open <span class="arrow">→</span></span>
+                    </div>
+                    <a class="card-link" href="/diffalign">Open DiffAlign</a>
+                </article>
+
+                <article class="card soon">
+                    <span class="tag">Steerable</span>
+                    <h3>SCR</h3>
+                    <p>Steerable single-step retrosynthesis. Condition generation on a target reaction type or a chosen starting material. Multi-step planning on the roadmap.</p>
+                    <div class="card-foot">
+                        <span class="soon-pill">Coming soon</span>
+                    </div>
+                </article>
+
+                <article class="card soon">
+                    <span class="tag">Evaluation</span>
+                    <h3>RetroAnalyze</h3>
+                    <p>Qualitative evaluation of generated routes. Inspect predictions through chemistry-aware lenses that go beyond top-k accuracy.</p>
+                    <div class="card-foot">
+                        <span class="soon-pill">Coming soon</span>
+                    </div>
+                </article>
+            </div>
+        </section>
+
+        <footer>
+            <div class="footer-row">
+                <div>
+                    Built by <a href="https://github.com/NajwaLaabid" target="_blank" rel="noopener">Najwa Laabid</a>
+                    at the <span>Aalto QuML group</span>.
+                </div>
+                <div class="note">
+                    More tools coming. Next up: model comparison, process visualization, and multi-step planning.
+                </div>
+            </div>
+        </footer>
+    </div>
+</body>
+</html>
+"""
+
 # HTML template
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -96,7 +426,7 @@ HTML_TEMPLATE = """
             max-width: 1100px;
             margin: 0 auto;
             padding: 20px;
-            background: #ffffff;
+            background: #fafaf7;
             min-height: 100vh;
         }
         body::before {
@@ -106,7 +436,7 @@ HTML_TEMPLATE = """
             left: 0;
             right: 0;
             height: 4px;
-            background: linear-gradient(90deg, #4a6fa5, #5a8fd5);
+            background: linear-gradient(90deg, #4a6fa5, #5a8fd5, #0d8a8a);
             z-index: 1000;
         }
         .container {
@@ -518,6 +848,9 @@ HTML_TEMPLATE = """
 </head>
 <body>
     <div class="container">
+        <a href="/" class="back-link" style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#666;text-decoration:none;margin-bottom:18px;">
+            <span style="font-size:15px;line-height:1;">←</span> RxnLab
+        </a>
         <h1>DiffAlign: Retrosynthesis through Diffusion</h1>
         <p class="subtitle">Enter your target molecule below</p>
 
@@ -531,7 +864,7 @@ HTML_TEMPLATE = """
             <button class="info-banner-dismiss" onclick="dismissBanner()" title="Dismiss">&times;</button>
         </div>
 
-        <form method="post" action="/" id="predict-form">
+        <form method="post" action="/diffalign" id="predict-form">
             <div class="form-group">
                 <label>Target Product <span class="label-hint">(SMILES)</span></label>
                 <input type="text" name="smiles" placeholder="Enter SMILES string of target molecule..."
@@ -1880,7 +2213,7 @@ HTML_TEMPLATE = """
             showProgress('Running DiffAlign with steps=' + steps + ' for ' + n + ' sample(s)...');
 
             var formData = new FormData(form);
-            fetch('/', {
+            fetch('/diffalign', {
                 method: 'POST',
                 body: formData,
                 headers: { 'X-Requested-With': 'XMLHttpRequest' }
@@ -1953,9 +2286,15 @@ def health():
     return jsonify({'status': 'healthy'}), 200
 
 
-@application.route('/', methods=['GET', 'POST'])
-def index():
-    """Main page with form and results."""
+@application.route('/')
+def landing():
+    """RxnLab platform landing page."""
+    return render_template_string(LANDING_TEMPLATE)
+
+
+@application.route('/diffalign', methods=['GET', 'POST'])
+def diffalign():
+    """DiffAlign retrosynthesis demo."""
     if request.method == 'GET':
         return render_template_string(HTML_TEMPLATE, results_html='')
 
