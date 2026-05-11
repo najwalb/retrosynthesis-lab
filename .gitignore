@@ -9,4 +9,5 @@ _DS_Store
 .env.production.local
 .env.development
 .env.test
-.env.production
+.env.production__pycache__/
+*.pyc
