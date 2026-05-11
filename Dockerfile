@@ -25,8 +25,15 @@ RUN useradd -m -u 1001 appuser && \
 
 WORKDIR /app
 
-# Install Python dependencies
+# Install Python dependencies.
+# Torch must land BEFORE the PyG packages (torch-scatter / torch-sparse / etc.):
+# those packages don't declare torch as a build dep but import it at the top of
+# setup.py to detect build flags. With modern pip's resolver, all packages are
+# collected before any install runs, so if torch-scatter falls through to a
+# source build (no matching wheel for the platform), `import torch` fails.
+# Installing torch first sidesteps that whole class of build-order errors.
 COPY requirements.txt .
+RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu torch==2.6.0+cpu
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code

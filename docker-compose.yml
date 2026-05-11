@@ -1,0 +1,31 @@
+# Local-dev Postgres for the RxnLab feedback layer.
+# This file is NOT used in Rahti production (Pukki provides Postgres there) —
+# it only exists to give contributors a one-command DB for local testing.
+#
+# Usage:
+#   docker compose up -d            # start Postgres in the background
+#   docker compose logs -f postgres # tail logs if something looks off
+#   docker compose down             # stop (data persists in the volume)
+#   docker compose down -v          # stop AND wipe all data
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: rxnlab-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rxnlab
+      POSTGRES_PASSWORD: rxnlab
+      POSTGRES_DB: rxnlab
+    ports:
+      - "5432:5432"
+    volumes:
+      - rxnlab-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rxnlab -d rxnlab"]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+
+volumes:
+  rxnlab-pg-data:

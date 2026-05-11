@@ -73,6 +73,14 @@ spec:
           ports:
             - containerPort: 8080
               protocol: TCP
+          envFrom:
+            # Pukki Postgres connection: create the secret first with
+            #   oc create secret generic rxnlab-db --from-literal=DATABASE_URL='postgresql+psycopg2://USER:PASS@HOST:5432/rxnlab'
+            # The container starts even if the secret is missing (optional: true) but DB
+            # features stay disabled — predictions still serve, no feedback is persisted.
+            - secretRef:
+                name: rxnlab-db
+                optional: true
           volumeMounts:
             - name: checkpoints
               mountPath: /app/DiffAlign/checkpoints
@@ -80,10 +88,10 @@ spec:
           resources:
             limits:
               cpu: "1"
-              memory: 2Gi
+              memory: 4Gi
             requests:
               cpu: 500m
-              memory: 1Gi
+              memory: 3Gi
           # Health checks
           livenessProbe:
             httpGet:

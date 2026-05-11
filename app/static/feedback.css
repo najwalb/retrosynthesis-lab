@@ -1,0 +1,203 @@
+/* Chemist feedback panel — inline per precursor card. */
+.feedback-panel {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: #f7f7f4;
+    border: 1px solid #e6e6df;
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+.feedback-panel.fb-disabled {
+    background: #f0f0ec;
+    color: #888;
+}
+
+.feedback-panel .fb-banner {
+    margin-bottom: 8px;
+    padding: 6px 8px;
+    background: #fff7e6;
+    border: 1px solid #f0d28a;
+    border-radius: 4px;
+    color: #7a5a1c;
+    font-size: 12px;
+}
+
+.feedback-panel .fb-banner code {
+    background: #fdecc4;
+    padding: 0 4px;
+    border-radius: 3px;
+}
+
+/* ── Plausibility slider row ──────────────────────────────────────── */
+.feedback-panel .fb-rate-inline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+.feedback-panel .fb-rate-name {
+    font-weight: 600;
+    color: #333;
+}
+
+.feedback-panel.fb-disabled .fb-rate-name { color: #999; }
+
+.feedback-panel .fb-rate-slider {
+    flex: 1;
+    min-width: 120px;
+    max-width: 240px;
+}
+
+.feedback-panel .fb-rate-value {
+    display: inline-block;
+    min-width: 1.2em;
+    text-align: center;
+    font-weight: 600;
+    color: #4a6fa5;
+}
+
+.feedback-panel .fb-rate-scale {
+    font-size: 11px;
+    color: #888;
+    margin-left: auto;
+}
+
+/* ── Dropdown row + buttons ───────────────────────────────────────── */
+.feedback-panel .fb-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.feedback-panel .fb-btn {
+    padding: 4px 10px;
+    border: 1px solid #c8c8bd;
+    background: #fff;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1.2;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.feedback-panel .fb-btn:hover:not(:disabled) {
+    background: #f0f0e8;
+    border-color: #a0a090;
+}
+
+.feedback-panel .fb-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.feedback-panel details { margin: 0; }
+
+.feedback-panel summary.fb-summary {
+    display: inline-block;
+    padding: 4px 10px;
+    border: 1px solid #c8c8bd;
+    background: #fff;
+    border-radius: 4px;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+    position: relative;
+}
+
+.feedback-panel summary.fb-summary::-webkit-details-marker { display: none; }
+.feedback-panel summary.fb-summary::after { content: ' ▾'; color: #888; }
+.feedback-panel details[open] summary.fb-summary::after { content: ' ▴'; }
+
+.feedback-panel.fb-disabled summary.fb-summary {
+    pointer-events: none;
+    opacity: 0.5;
+}
+
+/* Persistent tick on the summary once the chemist has saved any value for
+   that control (set/cleared by JS). */
+.feedback-panel .fb-summary-tick {
+    display: inline-block;
+    margin-left: 6px;
+    color: #2d8a47;
+    font-weight: 700;
+    opacity: 0;
+    transform: scale(0.7);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.feedback-panel .fb-summary-tick.fb-saved {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.feedback-panel .fb-tag-body,
+.feedback-panel .fb-comment-body {
+    margin-top: 8px;
+    padding: 10px;
+    background: #fff;
+    border: 1px solid #e6e6df;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 260px;
+}
+
+.feedback-panel .fb-tag-body label {
+    font-size: 12px;
+    color: #333;
+    display: block;
+}
+
+.feedback-panel .fb-tag-positive {
+    color: #2d6a3e;
+    font-weight: 600;
+}
+
+.feedback-panel .fb-tag-divider {
+    margin: 4px 0;
+    border: none;
+    border-top: 1px dashed #d0d0c4;
+}
+
+.feedback-panel .fb-text {
+    width: 100%;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 6px;
+    border: 1px solid #c8c8bd;
+    border-radius: 4px;
+    resize: vertical;
+}
+
+/* ── Inline status indicator: appears next to whatever the user just did ── */
+.feedback-panel .fb-footer {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 4px;
+}
+
+.feedback-panel .fb-status-inline {
+    font-size: 12px;
+    font-weight: 600;
+    color: #2d8a47;             /* success green by default */
+    opacity: 0;
+    transform: translateY(-2px);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+.feedback-panel .fb-status-inline.fb-visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.feedback-panel .fb-status-inline.fb-error {
+    color: #b54a4a;
+}

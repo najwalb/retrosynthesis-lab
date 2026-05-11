@@ -1,0 +1,51 @@
+{% if error %}
+<div class="results-section">
+    <div class="error">{{ error }}</div>
+</div>
+{% elif results %}
+<div class="results-section" data-run-id="{{ run_id or '' }}">
+    <script type="application/json" class="generation-results-json">{{ results_json | safe }}</script>
+    <div class="results-header">
+        <h2>Results</h2>
+    </div>
+
+    <div class="target-display">
+        {{ target_svg | safe }}
+        <div class="target-info">
+            <h3>Target</h3>
+            <div class="smiles">{{ smiles }}</div>
+            <div style="margin-top: 8px; font-size: 13px; color: #666;">
+                MW: {{ "%.1f"|format(target_mw) }} ·
+                Generated {{ results|length }} precursor set(s)
+            </div>
+        </div>
+    </div>
+
+    <h3 style="margin-bottom: 15px;">Predicted Precursor Sets</h3>
+    <div class="precursors-grid">
+        {% for result in results %}
+        <div class="precursor-card" data-result-index="{{ loop.index0 }}">
+            <div class="precursor-header">
+                <span class="precursor-rank">#{{ loop.index }}</span>
+                <span class="precursor-score">Score: {{ "%.3f"|format(result.score) }}</span>
+            </div>
+            {% if result.reaction_info and result.reaction_info.success %}
+            <div class="reaction-class-badge" title="Reaction class: {{ result.reaction_info.class or 'Unknown' }}">
+                {{ result.reaction_info.name or result.reaction_info.class or 'Unclassified' }}
+            </div>
+            {% endif %}
+            <div class="mol-svg">{{ result.svg | safe }}</div>
+            <div class="precursor-smiles">{{ result.precursors }}</div>
+            <div class="precursor-actions">
+                <button class="btn-lookup" onclick="lookupCompounds(this, '{{ result.precursors }}')">Search PubChem</button>
+                <button class="btn-inpaint" onclick="enterInpaintMode(this)">Inpaint</button>
+            </div>
+            <div class="compound-info" style="display:none;"></div>
+            {% with prediction_index = loop.index0 %}
+                {% include 'partials/feedback_panel.html' %}
+            {% endwith %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}

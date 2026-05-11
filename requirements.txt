@@ -3,6 +3,10 @@ gunicorn
 flask
 markupsafe
 
+# Persistence (Postgres on CSC Pukki)
+SQLAlchemy>=2.0
+psycopg2-binary
+
 # Scientific computing
 numpy
 scipy

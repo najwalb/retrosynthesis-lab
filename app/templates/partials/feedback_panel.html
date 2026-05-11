@@ -1,0 +1,58 @@
+{# Inline chemist-feedback panel; rendered per precursor card.
+   Required vars: run_id (str|None), prediction_index (int). #}
+<div class="feedback-panel{% if not run_id %} fb-disabled{% endif %}"
+     data-run-id="{{ run_id or '' }}"
+     data-prediction-index="{{ prediction_index }}">
+
+    {% if not run_id %}
+    <div class="fb-banner">Feedback collection is disabled — server needs <code>DATABASE_URL</code> set.</div>
+    {% endif %}
+
+    <label class="fb-rate-inline">
+        <span class="fb-rate-name">Plausibility</span>
+        <input type="range" min="1" max="5" step="1" value="3" class="fb-rate-slider"
+               {% if not run_id %}disabled{% endif %}>
+        <span class="fb-rate-value">3</span>
+        <span class="fb-status-inline fb-rate-status" data-status></span>
+        <span class="fb-rate-scale">1 = implausible · 5 = plausible</span>
+    </label>
+
+    <div class="fb-row">
+        <details class="fb-tag">
+            <summary class="fb-summary">Tag the disconnection<span class="fb-summary-tick" data-summary-tick></span></summary>
+            <div class="fb-tag-body">
+                <label class="fb-tag-positive"><input type="checkbox" value="looks-correct"> Looks correct</label>
+                <hr class="fb-tag-divider">
+                <label><input type="checkbox" value="wrong-functional-group"> Wrong functional group</label>
+                <label><input type="checkbox" value="implausible-disconnection"> Implausible disconnection</label>
+                <label><input type="checkbox" value="wrong-stereochemistry"> Wrong stereochemistry</label>
+                <label><input type="checkbox" value="regio-selectivity"> Regio-selectivity</label>
+                <label><input type="checkbox" value="chemo-selectivity"> Chemo-selectivity</label>
+                <label><input type="checkbox" value="protecting-group-missing"> Protecting group missing</label>
+                <label><input type="checkbox" value="byproduct-ignored"> Byproduct ignored</label>
+                <label><input type="checkbox" value="multi-step-disguised"> Multi-step disguised</label>
+                <label><input type="checkbox" value="reagent-uncommon"> Reagent uncommon</label>
+                <label><input type="checkbox" value="other"> Other</label>
+                <div class="fb-footer">
+                    <button type="button" class="fb-btn fb-tag-submit"
+                            {% if not run_id %}disabled{% endif %}>Submit tags</button>
+                    <span class="fb-status-inline fb-tag-status" data-status></span>
+                </div>
+            </div>
+        </details>
+
+        <details class="fb-comment">
+            <summary class="fb-summary">💬 Comment<span class="fb-summary-tick" data-summary-tick></span></summary>
+            <div class="fb-comment-body">
+                <textarea class="fb-text" rows="3" maxlength="5000"
+                          placeholder="Free-text comment (optional, max 5000 chars)"
+                          {% if not run_id %}disabled{% endif %}></textarea>
+                <div class="fb-footer">
+                    <button type="button" class="fb-btn fb-comment-submit"
+                            {% if not run_id %}disabled{% endif %}>Submit comment</button>
+                    <span class="fb-status-inline fb-comment-status" data-status></span>
+                </div>
+            </div>
+        </details>
+    </div>
+</div>
