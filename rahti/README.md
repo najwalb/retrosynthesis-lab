@@ -5,7 +5,8 @@ Kubernetes/OpenShift manifests for the RxnLab feedback persistence layer on CSC 
 | File | Purpose |
 |---|---|
 | `postgres.yaml` | PVC + Service + Deployment for an in-namespace Postgres 15 (the chemist-feedback DB). |
-| `postgres-backup.yaml` | Daily `pg_dump` → CSC Allas CronJob. Ships **suspended** so it doesn't fail-loop before you provision Allas. |
+| `postgres-backup.yaml` | Daily `pg_dump` → CSC Allas CronJob. References the image built from `backup-image/`. |
+| `backup-image/Dockerfile` | Minimal Alpine + `aws-cli` + `postgresql-client` image used by the backup CronJob. Built into Rahti's internal registry; OpenShift's restricted SCC prevents installing tools at runtime, so they must be baked in. |
 | `setup.sh` | First-time bootstrap: generates the Postgres password, creates both Secrets, applies the YAMLs. |
 
 ## First-time setup
@@ -21,7 +22,28 @@ The app starts in DB-disabled mode if `DATABASE_URL` is unset, so the order abov
 
 ## Enabling the Allas backup
 
-The CronJob ships suspended (`spec.suspend: true`) because it can't run before its Allas credentials Secret exists. Steps to turn it on:
+`postgres-backup.yaml` references an image at `image-registry.openshift-image-registry.svc:5000/<namespace>/rxnlab-backup-image:latest`. The image source lives in `backup-image/Dockerfile`. **The image must exist in your namespace's registry before applying `postgres-backup.yaml`.**
+
+### First-time image build (one-off per project)
+
+```bash
+oc new-build --name=rxnlab-backup-image --binary --strategy=docker
+oc start-build rxnlab-backup-image --from-dir=rahti/backup-image --follow
+```
+
+If the build pod gets stuck in `New` with `exceeded quota`, lower its CPU:
+```bash
+oc patch bc/rxnlab-backup-image --type=json -p \
+  '[{"op":"replace","path":"/spec/resources","value":{"limits":{"cpu":"200m","memory":"512Mi"},"requests":{"cpu":"50m","memory":"256Mi"}}}]'
+```
+
+### Re-building after updating the Dockerfile
+
+```bash
+oc start-build rxnlab-backup-image --from-dir=rahti/backup-image --follow
+```
+
+### Steps to turn on the backup CronJob:
 
 ### 1. Provision an Allas project + bucket
 

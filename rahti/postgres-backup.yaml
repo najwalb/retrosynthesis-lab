@@ -1,6 +1,6 @@
 # Daily pg_dump → CSC Allas backup of the rxnlab Postgres.
 #
-# Ships SUSPENDED. To enable:
+# Ships SUSPENDED initially. To enable:
 #   1. Provision an Allas bucket and S3 credentials (see rahti/README.md).
 #   2. Create the rxnlab-allas Secret with the four required keys:
 #        oc create secret generic rxnlab-allas \
@@ -13,6 +13,12 @@
 #
 # Backups land at  s3://<bucket>/postgres/rxnlab-YYYYMMDD-HHMMSS.sql.gz
 # Rotation: anything older than 30 days is deleted on each run.
+#
+# Image: built from rahti/backup-image/Dockerfile, pushed to
+# image-registry.openshift-image-registry.svc:5000/diffalign/rxnlab-backup-image:latest.
+# It bundles aws-cli + postgresql-client + gzip so the CronJob doesn't need to
+# `apk add` at runtime (which fails under OpenShift's restricted SCC because the
+# container runs as a non-root arbitrary UID).
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -23,7 +29,7 @@ metadata:
 spec:
   schedule: "0 3 * * *"          # daily at 03:00 UTC
   timeZone: "UTC"
-  suspend: true                  # flip to false after secrets are in place
+  suspend: false                 # set true if you need to pause without deleting
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
@@ -36,12 +42,11 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: backup
-              image: alpine:3.18
+              image: image-registry.openshift-image-registry.svc:5000/diffalign/rxnlab-backup-image:latest
               command: ["/bin/sh", "-c"]
               args:
                 - |
                   set -euo pipefail
-                  apk add --no-cache postgresql-client aws-cli gzip coreutils >/dev/null
                   TS=$(date -u +%Y%m%d-%H%M%S)
                   FILE=/tmp/rxnlab-${TS}.sql.gz
                   echo "dumping $PGDATABASE@$PGHOST..."
@@ -79,6 +84,8 @@ spec:
                     name: rxnlab-allas
               resources:
                 limits:
+                  cpu: 250m
                   memory: 256Mi
                 requests:
+                  cpu: 50m
                   memory: 128Mi
