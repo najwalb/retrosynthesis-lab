@@ -1,0 +1,107 @@
+# Postgres for the RxnLab feedback layer on Rahti.
+#
+# Bootstrap order (one-time, run rahti/setup.sh which handles this for you):
+#   1. Create the `rxnlab-pg` Secret (database-user / database-password / database-name).
+#   2. Create the `rxnlab-db` Secret (DATABASE_URL).
+#   3. `oc apply -f rahti/postgres.yaml`.
+#   4. Wire the app: `oc set env deployment/<app> --from=secret/rxnlab-db`.
+#
+# Apply is idempotent — running it again only updates fields that changed.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rxnlab-pg
+  labels:
+    app: rxnlab-pg
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+  storageClassName: standard-csi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rxnlab-pg
+  labels:
+    app: rxnlab-pg
+spec:
+  ports:
+    - name: postgresql
+      port: 5432
+      protocol: TCP
+      targetPort: 5432
+  selector:
+    app: rxnlab-pg
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rxnlab-pg
+  labels:
+    app: rxnlab-pg
+spec:
+  replicas: 1
+  strategy:
+    # PVC is RWO — can't have two pods mounting at once during a rolling update.
+    type: Recreate
+  selector:
+    matchLabels:
+      app: rxnlab-pg
+  template:
+    metadata:
+      labels:
+        app: rxnlab-pg
+    spec:
+      containers:
+        - name: postgresql
+          image: image-registry.openshift-image-registry.svc:5000/openshift/postgresql:15-el8
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5432
+              protocol: TCP
+          env:
+            - name: POSTGRESQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: rxnlab-pg
+                  key: database-user
+            - name: POSTGRESQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rxnlab-pg
+                  key: database-password
+            - name: POSTGRESQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: rxnlab-pg
+                  key: database-name
+          resources:
+            limits:
+              memory: 512Mi
+            requests:
+              memory: 256Mi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/pgsql/data
+          livenessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 1
+          readinessProbe:
+            exec:
+              command:
+                - /usr/libexec/check-container
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 1
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: rxnlab-pg

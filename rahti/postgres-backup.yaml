@@ -1,0 +1,84 @@
+# Daily pg_dump → CSC Allas backup of the rxnlab Postgres.
+#
+# Ships SUSPENDED. To enable:
+#   1. Provision an Allas bucket and S3 credentials (see rahti/README.md).
+#   2. Create the rxnlab-allas Secret with the four required keys:
+#        oc create secret generic rxnlab-allas \
+#          --from-literal=AWS_ACCESS_KEY_ID=... \
+#          --from-literal=AWS_SECRET_ACCESS_KEY=... \
+#          --from-literal=AWS_S3_ENDPOINT='https://a3s.fi' \
+#          --from-literal=ALLAS_BUCKET=<bucket-name>
+#   3. Unsuspend:  oc patch cronjob/rxnlab-pg-backup -p '{"spec":{"suspend":false}}'
+#   4. Trigger once manually to verify: oc create job --from=cronjob/rxnlab-pg-backup test-backup
+#
+# Backups land at  s3://<bucket>/postgres/rxnlab-YYYYMMDD-HHMMSS.sql.gz
+# Rotation: anything older than 30 days is deleted on each run.
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: rxnlab-pg-backup
+  labels:
+    app: rxnlab-pg-backup
+spec:
+  schedule: "0 3 * * *"          # daily at 03:00 UTC
+  timeZone: "UTC"
+  suspend: true                  # flip to false after secrets are in place
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 1800
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: backup
+              image: alpine:3.18
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -euo pipefail
+                  apk add --no-cache postgresql-client aws-cli gzip coreutils >/dev/null
+                  TS=$(date -u +%Y%m%d-%H%M%S)
+                  FILE=/tmp/rxnlab-${TS}.sql.gz
+                  echo "dumping $PGDATABASE@$PGHOST..."
+                  pg_dump | gzip > "$FILE"
+                  echo "uploading to s3://${ALLAS_BUCKET}/postgres/..."
+                  aws --endpoint-url="$AWS_S3_ENDPOINT" s3 cp "$FILE" "s3://${ALLAS_BUCKET}/postgres/"
+                  echo "rotating dumps older than 30 days..."
+                  CUTOFF=$(date -u -d '30 days ago' +%Y%m%d)
+                  aws --endpoint-url="$AWS_S3_ENDPOINT" s3 ls "s3://${ALLAS_BUCKET}/postgres/" \
+                    | awk -v c="$CUTOFF" '$4 ~ /^rxnlab-[0-9]{8}/ { d=substr($4,8,8); if (d < c) print $4 }' \
+                    | while read -r f; do
+                        aws --endpoint-url="$AWS_S3_ENDPOINT" s3 rm "s3://${ALLAS_BUCKET}/postgres/$f"
+                      done
+                  echo "done."
+              env:
+                - name: PGHOST
+                  value: rxnlab-pg
+                - name: PGUSER
+                  valueFrom:
+                    secretKeyRef:
+                      name: rxnlab-pg
+                      key: database-user
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: rxnlab-pg
+                      key: database-password
+                - name: PGDATABASE
+                  valueFrom:
+                    secretKeyRef:
+                      name: rxnlab-pg
+                      key: database-name
+              envFrom:
+                - secretRef:
+                    name: rxnlab-allas
+              resources:
+                limits:
+                  memory: 256Mi
+                requests:
+                  memory: 128Mi
